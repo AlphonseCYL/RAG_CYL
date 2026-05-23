@@ -1,0 +1,28 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  color: #202124;
+  background: #f4f7fb;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  width: min(420px, 100%);
+  border-radius: 8px;
+  box-shadow: 0 20px 50px rgba(30, 51, 84, 0.12);
+}
+
+.ant-typography {
+  margin-top: 0;
+}
