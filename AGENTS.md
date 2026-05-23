@@ -18,6 +18,51 @@
 - 基础设施由 `backend/docker-compose.yml` 编排：`swxy_api`、PostgreSQL、Elasticsearch、Redis。
 - 文档问答主链路是“上传文件 -> DeepDoc/RAG 解析切片 -> DashScope embedding -> 写入 Elasticsearch -> 用户提问 -> 混合召回/重排 -> 大模型流式回答 -> PostgreSQL 记录会话与消息”。
 
+## 已实现的完整功能
+
+当前 `backend/` + `frontend/` 主项目大约形成 8 个前后端闭环能力：
+后续需要根据这些完整功能在frontend_cyl和backend_cyl中进行一一复现。
+
+1. 用户注册与登录：
+   - 前端 `/login` 页面提供注册、登录表单。
+   - 后端 `POST /register` 写入用户，`POST /login` 校验密码并返回 JWT。
+   - 前端保存 token，后续请求自动携带 `Authorization: Bearer ...`。
+
+2. 创建聊天会话：
+   - 前端访问 `/` 时调用 `POST /create_session`，拿到 `session_id` 后跳转 `/chat/:id`。
+   - 该 `session_id` 后续用于聊天、快速解析上传、历史消息查询和会话文档记录。
+
+3. 聊天窗口流式对话：
+   - 前端 `frontend/src/pages/chat/index.tsx` 调用 `POST /chat_on_docs?session_id=...`。
+   - 后端通过 SSE 流式返回内容，前端边接收边渲染回答。
+   - 支持回答正文、思考内容、引用文档、推荐追问的展示。
+
+4. 知识库文档上传、解析与入库：
+   - 前端 `/repository` 页面调用 `POST /upload_files`。
+   - 后端保存文件，调用 DeepDoc/RAG 解析切片，生成 embedding，写入 Elasticsearch。
+   - 同时在 PostgreSQL 的 `knowledgebases` 表记录当前用户上传的文件名。
+   - 后续聊天会从当前用户对应的 ES 索引中召回相关 chunk。
+
+5. 当前会话文档快速解析并参与聊天：
+   - 前端聊天输入区可上传当前会话文档，接口为 `POST /quick_parse?session_id=...`。
+   - 后端支持 `pdf`、`docx`、`txt`，解析结果写入 Redis，默认 2 小时过期。
+   - 聊天生成时 `get_chat_completion()` 会把 Redis 中的当前会话文档内容和知识库召回内容一起放入 prompt。
+
+6. 知识库文件列表与删除：
+   - 前端 `/repository` 调用 `GET /get_files` 展示当前用户已上传文件。
+   - 删除按钮调用 `DELETE /delete_file/{file_name}`。
+   - 后端会删除 PostgreSQL 记录、ES 中对应文档，并尝试删除一个明确路径的本地文件；禁止改成递归批量删除。
+
+7. 历史会话与历史消息查看：
+   - 后端 `GET /get_sessions` 按用户查询历史会话。
+   - 后端 `GET /get_messages?session_id=...` 查询某个会话的历史问答。
+   - 前端聊天页进入时会加载历史消息，并还原回答、引用文档和推荐问题。
+
+8. 语音 STS Token 支撑：
+   - 前端 `frontend/src/api/other.ts` 提供 `getVolcToken()`。
+   - 后端 `POST /sts-token` 转发到火山语音 STS token API。
+   - 这是语音能力的支撑接口，不是文档问答主链路。
+
 ## 前端结构
 
 - 入口：`frontend/src/main.tsx` 挂载 `App`，`frontend/src/App.tsx` 配置 Ant Design 中文 locale、主题色和全局 loading API。

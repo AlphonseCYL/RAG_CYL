@@ -6,8 +6,12 @@ import {
   ConfigProvider,
   Form,
   Input,
+  Layout,
+  List,
+  Menu,
   Space,
   Tabs,
+  Tag,
   Typography,
   message,
 } from 'antd'
@@ -135,20 +139,7 @@ function App() {
 
   if (token) {
     return (
-      <main className="page">
-        <Card className="panel">
-          <Space direction="vertical" size={16}>
-            <Typography.Title level={2}>登录成功</Typography.Title>
-            <Typography.Text>当前用户：{username}</Typography.Text>
-            <Typography.Text type="secondary">
-              这里是最小可用版首页。下一步可以继续接入会话列表或聊天页面。
-            </Typography.Text>
-            <Button type="primary" onClick={logout}>
-              退出登录
-            </Button>
-          </Space>
-        </Card>
-      </main>
+      <AuthedApp username={username} onLogout={logout} />
     )
   }
 
@@ -189,6 +180,116 @@ function App() {
         />
       </Card>
     </main>
+  )
+}
+
+function AuthedApp(props: { username: string; onLogout: () => void }) {
+  const [activeKey, setActiveKey] = useState('chat')
+
+  return (
+    <Layout className="app-shell">
+      <Layout.Sider width={232} className="app-sidebar" breakpoint="lg" collapsedWidth={0}>
+        <div className="brand">
+          <div className="brand-mark">文</div>
+          <div>
+            <div className="brand-title">智能文档问答</div>
+            <div className="brand-subtitle">复现版 frontend_cyl</div>
+          </div>
+        </div>
+
+        <Button block type="primary" className="new-chat-button" onClick={() => setActiveKey('chat')}>
+          新建对话
+        </Button>
+
+        <Menu
+          mode="inline"
+          selectedKeys={[activeKey]}
+          onClick={(item) => setActiveKey(item.key)}
+          items={[
+            { key: 'chat', label: '对话工作台' },
+            { key: 'repository', label: '知识库文件' },
+            { key: 'history', label: '历史会话' },
+          ]}
+        />
+      </Layout.Sider>
+
+      <Layout className="app-main">
+        <header className="topbar">
+          <div>
+            <Typography.Title level={3}>欢迎回来，{props.username}</Typography.Title>
+            <Typography.Text type="secondary">
+              这里是登录后的主界面骨架，后续可以逐个接入会话、上传和流式问答。
+            </Typography.Text>
+          </div>
+          <Button onClick={props.onLogout}>退出登录</Button>
+        </header>
+
+        <main className="workspace">
+          {activeKey === 'chat' && <ChatHome />}
+          {activeKey === 'repository' && <RepositoryHome />}
+          {activeKey === 'history' && <HistoryHome />}
+        </main>
+      </Layout>
+    </Layout>
+  )
+}
+
+function ChatHome() {
+  return (
+    <section className="chat-home">
+      <div className="welcome-band">
+        <Tag color="blue">第一步</Tag>
+        <Typography.Title level={2}>先做一个能进入系统的对话页</Typography.Title>
+        <Typography.Paragraph>
+          当前界面先准备好“左侧导航 + 顶部用户区 + 对话输入区”。下一步可以把发送按钮接到后端
+          <Typography.Text code> /chat_on_docs </Typography.Text>
+          或者先接
+          <Typography.Text code> /create_session </Typography.Text>
+          创建会话。
+        </Typography.Paragraph>
+      </div>
+
+      <div className="chat-board">
+        <div className="message assistant-message">
+          你好，我是智能文档问答助手。你可以先从这里开始实现普通文本提问。
+        </div>
+        <div className="composer">
+          <Input.TextArea
+            autoSize={{ minRows: 3, maxRows: 6 }}
+            placeholder="这里先做界面占位：后续再接入发送问题、SSE 流式回答和引用文档"
+          />
+          <Button type="primary">发送</Button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function RepositoryHome() {
+  return (
+    <section className="simple-panel">
+      <Typography.Title level={3}>知识库文件</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        这里后续接入文件列表、上传和删除。建议下一小步先实现文件列表接口。
+      </Typography.Paragraph>
+      <Button type="primary">上传文件</Button>
+    </section>
+  )
+}
+
+function HistoryHome() {
+  return (
+    <section className="simple-panel">
+      <Typography.Title level={3}>历史会话</Typography.Title>
+      <List
+        dataSource={[
+          '示例会话：项目复现计划',
+          '示例会话：文档问答测试',
+          '示例会话：知识库上传流程',
+        ]}
+        renderItem={(item) => <List.Item>{item}</List.Item>}
+      />
+    </section>
   )
 }
 
