@@ -1,10 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.features.auth.security import get_current_user
-from app.features.sessions.schemas import SessionResponse
-from app.features.sessions.service import create_session
+from app.features.sessions.schemas import (
+    DeleteSessionResponse,
+    SessionItem,
+    SessionListResponse,
+    SessionResponse,
+)
+from app.features.sessions.service import create_session, delete_session, get_sessions
 
 
 router = APIRouter(tags=["sessions"])
@@ -17,3 +22,22 @@ def create_chat_session(
     session_id = create_session(current_user["id"])
     return SessionResponse(session_id=session_id)
 
+
+@router.get("/get_sessions", response_model=SessionListResponse)
+def list_sessions(
+    current_user: Annotated[dict, Depends(get_current_user)],
+) -> SessionListResponse:
+    sessions = get_sessions(current_user["id"])
+    sessions_items = [SessionItem(**session) for session in sessions]
+    return SessionListResponse(sessions=sessions_items)
+
+
+@router.delete("/sessions/{session_id}", response_model=DeleteSessionResponse)
+def remove_session(
+    session_id: str,
+    current_user: Annotated[dict, Depends(get_current_user)],
+) -> DeleteSessionResponse:
+    deleted = delete_session(current_user["id"], session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="会话不存在或无权删除")
+    return DeleteSessionResponse()

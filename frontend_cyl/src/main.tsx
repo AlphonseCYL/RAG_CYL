@@ -9,6 +9,7 @@ import {
   Layout,
   List,
   Menu,
+  Popconfirm,
   Space,
   Tabs,
   Tag,
@@ -33,6 +34,18 @@ type LoginResponse = {
 
 type CreateSessionResponse = {
   session_id: string
+  status: string
+  message: string
+}
+
+type SessionItem = {
+  session_id: string
+  name: string
+  created_at: string
+}
+
+type SessionListResponse = {
+  sessions: SessionItem[]
   status: string
   message: string
 }
@@ -203,11 +216,36 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [loadingSessions, setLoadingSessions] = useState(false)
+  const [deletingSessionId, setDeletingSessionId] = useState('')
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId),
     [activeSessionId, sessions],
   )
+
+  async function loadSessions() {
+    setLoadingSessions(true)
+    try {
+      const data = await request<SessionListResponse>('/get_sessions', {}, props.token)
+      const mappedSessions = data.sessions.map((item) => ({
+        id: item.session_id,
+        title: item.name || '新对话',
+        createdAt: item.created_at,
+      }))
+      setSessions(mappedSessions)
+      setActiveSessionId((current) => current || mappedSessions[0]?.id || '')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载历史会话失败')
+    } finally {
+      setLoadingSessions(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSessions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.token])
 
   async function createNewSession() {
     message.destroy()
@@ -237,6 +275,21 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
     }
   }
 
+  async function deleteHistorySession(sessionId: string) {
+    message.destroy()
+    setDeletingSessionId(sessionId)
+    try {
+      await request(`/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }, props.token)
+      setSessions((current) => current.filter((session) => session.id !== sessionId))
+      setActiveSessionId((current) => (current === sessionId ? '' : current))
+      message.success('已删除会话')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除会话失败')
+    } finally {
+      setDeletingSessionId('')
+    }
+  }
+
   function selectHistorySession(sessionId: string) {
     setActiveSessionId(sessionId)
     setActiveKey('chat')
@@ -249,7 +302,7 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           <div className="brand-mark">文</div>
           <div>
             <div className="brand-title">智能文档问答</div>
-            <div className="brand-subtitle">复现版 frontend_cyl</div>
+            <div className="brand-subtitle">frontend_cyl</div>
           </div>
         </div>
 
@@ -280,7 +333,7 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           <div>
             <Typography.Title level={3}>欢迎回来，{props.username}</Typography.Title>
             <Typography.Text type="secondary">
-              当前切片先复现会话创建：点击“新建对话”后生成 session_id，并进入独立聊天窗口。
+              登录后会自动从后端读取当前用户的历史会话。
             </Typography.Text>
           </div>
           <Button onClick={props.onLogout}>退出登录</Button>
@@ -290,7 +343,13 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           {activeKey === 'chat' && <ChatHome session={activeSession} />}
           {activeKey === 'repository' && <RepositoryHome />}
           {activeKey === 'history' && (
-            <HistoryHome sessions={sessions} onSelectSession={selectHistorySession} />
+            <HistoryHome
+              sessions={sessions}
+              loading={loadingSessions}
+              deletingSessionId={deletingSessionId}
+              onDeleteSession={deleteHistorySession}
+              onSelectSession={selectHistorySession}
+            />
           )}
         </main>
       </Layout>
@@ -305,8 +364,7 @@ function ChatHome(props: { session?: ChatSession }) {
         <Tag color="blue">会话入口</Tag>
         <Typography.Title level={2}>点击左侧“新建对话”开始</Typography.Title>
         <Typography.Paragraph type="secondary">
-          新建成功后，前端会带 Bearer token 调用后端 <Typography.Text code>/create_session</Typography.Text>，
-          并进入对应 session_id 的聊天窗口。
+          新建成功后会生成 session_id，并进入对应聊天窗口。
         </Typography.Paragraph>
       </section>
     )
@@ -326,12 +384,12 @@ function ChatHome(props: { session?: ChatSession }) {
       <div className="chat-board">
         <div className="message assistant-message">
           新会话窗口已创建。后续接入 <Typography.Text code>/chat_on_docs</Typography.Text> 后，
-          这里会展示当前 session 的流式问答、引用文档和推荐追问。
+          这里会显示当前 session 的流式问答、引用文档和推荐追问。
         </div>
         <div className="composer">
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 6 }}
-            placeholder="当前切片先完成会话创建；发送问题将在下一步接入 SSE 聊天接口。"
+            placeholder="当前切片先完成会话创建；发送问题将进入下一步接入 SSE 聊天接口。"
           />
           <Button type="primary">发送</Button>
         </div>
@@ -345,7 +403,7 @@ function RepositoryHome() {
     <section className="simple-panel">
       <Typography.Title level={3}>知识库文件</Typography.Title>
       <Typography.Paragraph type="secondary">
-        这里后续接入文件列表、上传和删除。建议下一小步先实现文件列表接口。
+        这里后续接入文件列表、上传和删除。建议下一步先实现文件列表接口。
       </Typography.Paragraph>
       <Button type="primary">上传文件</Button>
     </section>
@@ -354,13 +412,17 @@ function RepositoryHome() {
 
 function HistoryHome(props: {
   sessions: ChatSession[]
+  loading: boolean
+  deletingSessionId: string
+  onDeleteSession: (sessionId: string) => void
   onSelectSession: (sessionId: string) => void
 }) {
   return (
     <section className="simple-panel">
       <Typography.Title level={3}>历史会话</Typography.Title>
       <List
-        locale={{ emptyText: '还没有会话，先点击“新建对话”。' }}
+        loading={props.loading}
+        locale={{ emptyText: '还没有会话，先点“新建对话”。' }}
         dataSource={props.sessions}
         renderItem={(item) => (
           <List.Item
@@ -369,6 +431,19 @@ function HistoryHome(props: {
               <Button key="open" type="link" onClick={() => props.onSelectSession(item.id)}>
                 打开
               </Button>,
+              <Popconfirm
+                key="delete"
+                title="删除会话"
+                description="确定从数据库中删除这个对话窗口吗？"
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => props.onDeleteSession(item.id)}
+              >
+                <Button danger type="link" loading={props.deletingSessionId === item.id}>
+                  删除
+                </Button>
+              </Popconfirm>,
             ]}
           >
             <List.Item.Meta
