@@ -9,13 +9,13 @@ def create_session(user_id: int) -> str:
     now = datetime.now(timezone.utc).isoformat()
 
     with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO sessions (session_id, user_id, name, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (session_id, user_id, "新对话", now),
-        )
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO sessions (session_id, user_id, name, created_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (session_id, user_id, "新对话", now),
+            )
 
     return session_id
-

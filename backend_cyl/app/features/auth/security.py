@@ -13,15 +13,14 @@ from app.core.config import (
     JWT_SECRET_KEY,
 )
 
-# 生成一个随机salt，再根据密码生成hash值，输出格式为salt$hash
+# 生成随机 salt，再根据输入密码生成 hash，输出格式为 salt$hash。
 def hash_password(password: str) -> str:
     salt = os.urandom(16).hex()
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
     return f"{salt}${digest.hex()}"
 
-# 验证密码是否正确，输入密码和数据库中存储的salt$hash值
-# 根据输入密码以及salt来计算一个hash值，并与数据库中的hash值进行比较
-# 返回True或False
+
+# 验证输入密码与数据库中的 salt$hash（password_hash）是否匹配。
 def verify_password(password: str, password_hash: str) -> bool:
     try:
         salt, expected_digest = password_hash.split("$", 1)
@@ -38,6 +37,8 @@ def create_access_token(user_id: int, username: str) -> str:
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
+# 从 Authorization 请求头中提取token并验证 JWT，
+# decode后返回当前用户信息（id 和 username）。
 def get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
