@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import {
   Button,
@@ -31,6 +31,18 @@ type LoginResponse = {
   username: string
 }
 
+type CreateSessionResponse = {
+  session_id: string
+  status: string
+  message: string
+}
+
+type ChatSession = {
+  id: string
+  title: string
+  createdAt: string
+}
+
 function getErrorMessage(data: unknown): string {
   if (!data || typeof data !== 'object') {
     return '请求失败'
@@ -56,11 +68,16 @@ function getErrorMessage(data: unknown): string {
   return '请求失败'
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string,
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   })
@@ -138,9 +155,7 @@ function App() {
   }
 
   if (token) {
-    return (
-      <AuthedApp username={username} onLogout={logout} />
-    )
+    return <AuthedApp token={token} username={username} onLogout={logout} />
   }
 
   return (
@@ -183,8 +198,49 @@ function App() {
   )
 }
 
-function AuthedApp(props: { username: string; onLogout: () => void }) {
+function AuthedApp(props: { token: string; username: string; onLogout: () => void }) {
   const [activeKey, setActiveKey] = useState('chat')
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [activeSessionId, setActiveSessionId] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId),
+    [activeSessionId, sessions],
+  )
+
+  async function createNewSession() {
+    message.destroy()
+    setCreating(true)
+    try {
+      const data = await request<CreateSessionResponse>(
+        '/create_session',
+        {
+          method: 'POST',
+          body: JSON.stringify({}),
+        },
+        props.token,
+      )
+      const nextSession: ChatSession = {
+        id: data.session_id,
+        title: `新对话 ${sessions.length + 1}`,
+        createdAt: new Date().toLocaleString('zh-CN', { hour12: false }),
+      }
+      setSessions((current) => [nextSession, ...current])
+      setActiveSessionId(nextSession.id)
+      setActiveKey('chat')
+      message.success('已创建新对话')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '创建会话失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  function selectHistorySession(sessionId: string) {
+    setActiveSessionId(sessionId)
+    setActiveKey('chat')
+  }
 
   return (
     <Layout className="app-shell">
@@ -197,7 +253,13 @@ function AuthedApp(props: { username: string; onLogout: () => void }) {
           </div>
         </div>
 
-        <Button block type="primary" className="new-chat-button" onClick={() => setActiveKey('chat')}>
+        <Button
+          block
+          type="primary"
+          className="new-chat-button"
+          loading={creating}
+          onClick={createNewSession}
+        >
           新建对话
         </Button>
 
@@ -218,45 +280,58 @@ function AuthedApp(props: { username: string; onLogout: () => void }) {
           <div>
             <Typography.Title level={3}>欢迎回来，{props.username}</Typography.Title>
             <Typography.Text type="secondary">
-              这里是登录后的主界面骨架，后续可以逐个接入会话、上传和流式问答。
+              当前切片先复现会话创建：点击“新建对话”后生成 session_id，并进入独立聊天窗口。
             </Typography.Text>
           </div>
           <Button onClick={props.onLogout}>退出登录</Button>
         </header>
 
         <main className="workspace">
-          {activeKey === 'chat' && <ChatHome />}
+          {activeKey === 'chat' && <ChatHome session={activeSession} />}
           {activeKey === 'repository' && <RepositoryHome />}
-          {activeKey === 'history' && <HistoryHome />}
+          {activeKey === 'history' && (
+            <HistoryHome sessions={sessions} onSelectSession={selectHistorySession} />
+          )}
         </main>
       </Layout>
     </Layout>
   )
 }
 
-function ChatHome() {
+function ChatHome(props: { session?: ChatSession }) {
+  if (!props.session) {
+    return (
+      <section className="empty-chat">
+        <Tag color="blue">会话入口</Tag>
+        <Typography.Title level={2}>点击左侧“新建对话”开始</Typography.Title>
+        <Typography.Paragraph type="secondary">
+          新建成功后，前端会带 Bearer token 调用后端 <Typography.Text code>/create_session</Typography.Text>，
+          并进入对应 session_id 的聊天窗口。
+        </Typography.Paragraph>
+      </section>
+    )
+  }
+
   return (
     <section className="chat-home">
-      <div className="welcome-band">
-        <Tag color="blue">第一步</Tag>
-        <Typography.Title level={2}>先做一个能进入系统的对话页</Typography.Title>
-        <Typography.Paragraph>
-          当前界面先准备好“左侧导航 + 顶部用户区 + 对话输入区”。下一步可以把发送按钮接到后端
-          <Typography.Text code> /chat_on_docs </Typography.Text>
-          或者先接
-          <Typography.Text code> /create_session </Typography.Text>
-          创建会话。
-        </Typography.Paragraph>
+      <div className="session-header">
+        <div>
+          <Tag color="green">当前会话</Tag>
+          <Typography.Title level={2}>{props.session.title}</Typography.Title>
+          <Typography.Text type="secondary">session_id: {props.session.id}</Typography.Text>
+        </div>
+        <Typography.Text type="secondary">{props.session.createdAt}</Typography.Text>
       </div>
 
       <div className="chat-board">
         <div className="message assistant-message">
-          你好，我是智能文档问答助手。你可以先从这里开始实现普通文本提问。
+          新会话窗口已创建。后续接入 <Typography.Text code>/chat_on_docs</Typography.Text> 后，
+          这里会展示当前 session 的流式问答、引用文档和推荐追问。
         </div>
         <div className="composer">
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 6 }}
-            placeholder="这里先做界面占位：后续再接入发送问题、SSE 流式回答和引用文档"
+            placeholder="当前切片先完成会话创建；发送问题将在下一步接入 SSE 聊天接口。"
           />
           <Button type="primary">发送</Button>
         </div>
@@ -277,17 +352,36 @@ function RepositoryHome() {
   )
 }
 
-function HistoryHome() {
+function HistoryHome(props: {
+  sessions: ChatSession[]
+  onSelectSession: (sessionId: string) => void
+}) {
   return (
     <section className="simple-panel">
       <Typography.Title level={3}>历史会话</Typography.Title>
       <List
-        dataSource={[
-          '示例会话：项目复现计划',
-          '示例会话：文档问答测试',
-          '示例会话：知识库上传流程',
-        ]}
-        renderItem={(item) => <List.Item>{item}</List.Item>}
+        locale={{ emptyText: '还没有会话，先点击“新建对话”。' }}
+        dataSource={props.sessions}
+        renderItem={(item) => (
+          <List.Item
+            className="session-list-item"
+            actions={[
+              <Button key="open" type="link" onClick={() => props.onSelectSession(item.id)}>
+                打开
+              </Button>,
+            ]}
+          >
+            <List.Item.Meta
+              title={item.title}
+              description={
+                <Space direction="vertical" size={0}>
+                  <Typography.Text type="secondary">session_id: {item.id}</Typography.Text>
+                  <Typography.Text type="secondary">{item.createdAt}</Typography.Text>
+                </Space>
+              }
+            />
+          </List.Item>
+        )}
       />
     </section>
   )

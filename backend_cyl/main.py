@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import init_db
 from app.features.auth.router import router as auth_router
+from app.features.sessions.router import router as sessions_router
 
 
 app = FastAPI(title="swxy cyl minimal auth")
@@ -36,3 +37,4 @@ def health() -> dict:
 
 
 app.include_router(auth_router)
+app.include_router(sessions_router)

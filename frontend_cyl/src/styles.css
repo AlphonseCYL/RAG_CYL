@@ -107,15 +107,24 @@ body {
   gap: 20px;
 }
 
-.welcome-band {
+.empty-chat,
+.session-header {
   padding: 24px;
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid #e6ebf1;
 }
 
-.welcome-band .ant-typography {
+.empty-chat .ant-typography,
+.session-header .ant-typography {
   margin-bottom: 10px;
+}
+
+.session-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .chat-board {
@@ -156,6 +165,10 @@ body {
   border: 1px solid #e6ebf1;
 }
 
+.session-list-item {
+  cursor: default;
+}
+
 @media (max-width: 768px) {
   .topbar {
     align-items: flex-start;
@@ -169,5 +182,9 @@ body {
 
   .composer {
     grid-template-columns: 1fr;
+  }
+
+  .session-header {
+    flex-direction: column;
   }
 }
