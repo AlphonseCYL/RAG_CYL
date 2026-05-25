@@ -139,16 +139,62 @@ body {
   border: 1px solid #e6ebf1;
 }
 
+.message-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+}
+
 .message {
   max-width: 680px;
   padding: 14px 16px;
   border-radius: 8px;
   line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .assistant-message {
+  align-self: flex-start;
   color: #253042;
   background: #f3f6fb;
+}
+
+.user-message {
+  align-self: flex-end;
+  color: #ffffff;
+  background: #2f6fed;
+}
+
+.message-role {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.message-content {
+  min-height: 24px;
+}
+
+.message-think {
+  margin-bottom: 10px;
+  padding-left: 10px;
+  color: #8b95a1;
+  border-left: 2px solid #d8dee8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.recommend-list {
+  margin-top: 12px;
+}
+
+.recommend-list .ant-tag {
+  cursor: pointer;
+  white-space: normal;
 }
 
 .composer {

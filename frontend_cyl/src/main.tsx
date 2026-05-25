@@ -56,6 +56,29 @@ type ChatSession = {
   createdAt: string
 }
 
+type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  think?: string
+  loading?: boolean
+  error?: string
+  recommendedQuestions?: string[]
+}
+
+type ChatStreamPayload = {
+  content?: string
+  thinking?: boolean
+  documents?: unknown[]
+  recommended_questions?: string[]
+  role?: string
+  error?: string
+}
+
+function createLocalId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 function getErrorMessage(data: unknown): string {
   if (!data || typeof data !== 'object') {
     return '请求失败'
@@ -340,7 +363,7 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
         </header>
 
         <main className="workspace">
-          {activeKey === 'chat' && <ChatHome session={activeSession} />}
+          {activeKey === 'chat' && <ChatHome session={activeSession} token={props.token} />}
           {activeKey === 'repository' && <RepositoryHome />}
           {activeKey === 'history' && (
             <HistoryHome
@@ -357,7 +380,152 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
   )
 }
 
-function ChatHome(props: { session?: ChatSession }) {
+function ChatHome(props: { session?: ChatSession; token: string }) {
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+
+  useEffect(() => {
+    setMessages([])
+    setInput('')
+    setSending(false)
+  }, [props.session?.id])
+
+  function updateAssistantMessage(
+    assistantId: string,
+    update: (message: ChatMessage) => ChatMessage,
+  ) {
+    setMessages((current) =>
+      current.map((item) => (item.id === assistantId ? update(item) : item)),
+    )
+  }
+
+  function parseSseBlock(block: string, assistantId: string) {
+    const data = block
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.replace(/^data:\s?/, ''))
+      .join('\n')
+      .trim()
+
+    if (!data || data === '[DONE]') {
+      return
+    }
+
+    const json = JSON.parse(data) as ChatStreamPayload
+    if (json.role === 'error' || json.error) {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        error: json.content || json.error || '后端生成回答失败',
+      }))
+      return
+    }
+
+    if (json.content && json.thinking) {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        think: `${messageItem.think || ''}${json.content}`,
+      }))
+      return
+    }
+
+    if (json.content) {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        content: `${messageItem.content}${json.content}`,
+      }))
+    }
+
+    if (json.recommended_questions?.length) {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        recommendedQuestions: json.recommended_questions,
+      }))
+    }
+  }
+
+  async function readChatStream(reader: ReadableStreamDefaultReader<Uint8Array>, assistantId: string) {
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+      buffer += decoder.decode(value, { stream: !done })
+
+      let blockEnd = buffer.indexOf('\n\n')
+      while (blockEnd !== -1) {
+        const block = buffer.slice(0, blockEnd)
+        buffer = buffer.slice(blockEnd + 2)
+        parseSseBlock(block, assistantId)
+        blockEnd = buffer.indexOf('\n\n')
+      }
+
+      if (done) {
+        if (buffer.trim()) {
+          parseSseBlock(buffer, assistantId)
+        }
+        break
+      }
+    }
+  }
+
+  async function sendMessage() {
+    if (!props.session || sending) {
+      return
+    }
+
+    const question = input.trim()
+    if (!question) {
+      message.warning('请输入问题')
+      return
+    }
+
+    const assistantId = createLocalId()
+    setInput('')
+    setSending(true)
+    setMessages((current) => [
+      ...current,
+      { id: createLocalId(), role: 'user', content: question },
+      { id: assistantId, role: 'assistant', content: '', loading: true },
+    ])
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/chat_on_docs?session_id=${encodeURIComponent(props.session.id)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${props.token}`,
+          },
+          body: JSON.stringify({ message: question }),
+        },
+      )
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(getErrorMessage(data))
+      }
+
+      if (!response.body) {
+        throw new Error('浏览器没有收到流式响应体')
+      }
+
+      await readChatStream(response.body.getReader(), assistantId)
+    } catch (error) {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        error: error instanceof Error ? error.message : '发送失败',
+      }))
+    } finally {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        loading: false,
+      }))
+      setSending(false)
+    }
+  }
+
   if (!props.session) {
     return (
       <section className="empty-chat">
@@ -382,16 +550,50 @@ function ChatHome(props: { session?: ChatSession }) {
       </div>
 
       <div className="chat-board">
-        <div className="message assistant-message">
-          新会话窗口已创建。后续接入 <Typography.Text code>/chat_on_docs</Typography.Text> 后，
-          这里会显示当前 session 的流式问答、引用文档和推荐追问。
+        <div className="message-list">
+          {messages.length === 0 && (
+            <div className="message assistant-message">
+              新会话窗口已创建。现在可以发送问题，前端会读取{' '}
+              <Typography.Text code>/chat_on_docs</Typography.Text> 的 SSE 流式响应。
+            </div>
+          )}
+
+          {messages.map((item) => (
+            <div key={item.id} className={`message ${item.role}-message`}>
+              <div className="message-role">{item.role === 'user' ? '我' : '助手'}</div>
+              {item.think && <div className="message-think">{item.think}</div>}
+              <div className="message-content">
+                {item.content || (item.loading ? '正在生成回答...' : '')}
+                {item.error && <Typography.Text type="danger">{item.error}</Typography.Text>}
+              </div>
+              {item.recommendedQuestions?.length ? (
+                <Space className="recommend-list" size={[8, 8]} wrap>
+                  {item.recommendedQuestions.map((question) => (
+                    <Tag key={question} color="blue" onClick={() => setInput(question)}>
+                      {question}
+                    </Tag>
+                  ))}
+                </Space>
+              ) : null}
+            </div>
+          ))}
         </div>
         <div className="composer">
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 6 }}
-            placeholder="当前切片先完成会话创建；发送问题将进入下一步接入 SSE 聊天接口。"
+            value={input}
+            placeholder="输入问题，按发送后会通过 SSE 流式显示回答。"
+            onChange={(event) => setInput(event.target.value)}
+            onPressEnter={(event) => {
+              if (!event.shiftKey) {
+                event.preventDefault()
+                sendMessage()
+              }
+            }}
           />
-          <Button type="primary">发送</Button>
+          <Button type="primary" loading={sending} onClick={sendMessage}>
+            发送
+          </Button>
         </div>
       </div>
     </section>
