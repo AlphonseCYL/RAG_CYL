@@ -18,7 +18,7 @@ from app.features.sessions.service import (
     get_chat_completion,
     user_owns_session,
 )
-from app.features.sessions.quick_parse_service import get_parsed_content, quick_parse_document
+from app.features.sessions.quick_parse_service import quick_parse_service
 
 
 router = APIRouter(tags=["sessions"])
@@ -78,7 +78,18 @@ async def quick_parse_current_session_document(
     session_id: Annotated[str, Query()],
     file: Annotated[UploadFile, File()],
 ) -> dict:
-    return await quick_parse_document(current_user["id"], session_id, file)
+    
+    file_content = await file.read()
+    if not file_content:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    filename = file.filename or "未命名文档"
+    
+    return await quick_parse_service.quick_parse_document(
+        current_user["id"], 
+        session_id, 
+        file_content,
+        filename
+        )
 
 
 @router.get("/get_parsed_content")
@@ -86,7 +97,7 @@ def read_parsed_content(
     current_user: Annotated[dict, Depends(get_current_user)],
     session_id: Annotated[str, Query()],
 ) -> dict:
-    return get_parsed_content(current_user["id"], session_id)
+    return quick_parse_service.get_parsed_content(current_user["id"], session_id)
 
 
 ##################################################
@@ -107,4 +118,3 @@ async def chat_on_docs(
         get_chat_completion(session_id, current_user["id"], request.message),
         media_type="text/event-stream",
     )
-

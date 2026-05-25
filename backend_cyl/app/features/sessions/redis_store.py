@@ -32,9 +32,9 @@ def store_quick_parse_document(session_id: str, payload: dict) -> None:
 # 输入：会话id。
 # 功能：从Redis中获取与会话id绑定的文档内容
 # 返回：文档内容；如果获取过程中发生Redis错误，会抛出HTTPException异常，状态码为503；
-async def load_quick_parse_document(session_id: str) -> dict | None:
+def load_quick_parse_document(session_id: str) -> dict | None:
     try:
-        raw_value = await redis_client.get(f"quick_parse:{session_id}")
+        raw_value = redis_client.get(f"quick_parse:{session_id}")
     except redis.RedisError as exc:
         raise HTTPException(status_code=503, detail=f"Redis read failed: {exc}") from exc
 

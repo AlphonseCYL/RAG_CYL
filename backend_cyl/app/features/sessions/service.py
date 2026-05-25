@@ -6,7 +6,7 @@ import os
 from openai import OpenAI
 
 from app.core.database import get_connection
-from app.features.sessions.quick_parse_service import get_quick_parse_document
+from app.features.sessions.quick_parse_service import quick_parse_service
 from pymysql.cursors import DictCursor
 
 MAX_PROMPT_DOCUMENT_LENGTH = 4000
@@ -65,8 +65,16 @@ def user_owns_session(user_id: int, session_id: str) -> bool:
 
 
 
-def get_chat_completion(session_id: str, user_id: int, question: str, retrieved_content: str = ""):
-    quick_document = get_quick_parse_document(user_id, session_id)
+def get_chat_completion(
+        session_id: str, 
+        user_id: int, 
+        question: str, 
+        retrieved_content: str = ""
+        ):
+    '''输入：用户id、会话id、用户问题、检索到的相关内容（可选）
+    输出：基于检索内容和用户问题生成的回答，流式返回给前端'''
+    
+    quick_document = quick_parse_service.get_quick_parse_document(user_id, session_id)
     documents = []
     formatted_references = []
 

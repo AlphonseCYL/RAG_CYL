@@ -31,6 +31,7 @@ def _get_file_type(filename: str) -> str:
 
 
 def _limit_text(content: str, file_type: str) -> str:
+    ''' 限制文本长度，去除首尾空白 '''
     content = content.strip()
     if not content:
         raise HTTPException(status_code=400, detail="文件中没有解析到文本内容")
@@ -87,6 +88,7 @@ def _parse_pdf(file_content: bytes) -> tuple[str, int]:
 # 判断该会话是否存在数据库
 # 无返回
 def _ensure_session_owner(user_id: int, session_id: str) -> None:
+    ''' 判断该会话是否存在数据库 '''
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -107,19 +109,21 @@ def _ensure_session_owner(user_id: int, session_id: str) -> None:
 #   快速解析文件内容并存储到Redis，设置过期时间
 #   返回：解析结果和相关信息
 ###############################################
-async def quick_parse_document(user_id: int, session_id: str, file: UploadFile) -> dict:
+# @router.post("/quick_parse")
+async def _quick_parse_document_impl(
+        user_id: int, 
+        session_id: str, 
+        file_content: bytes, 
+        filename: str
+        ) -> dict:
+    
     _ensure_session_owner(user_id, session_id)
 
-    file_content = await file.read()
-    if not file_content:
-        raise HTTPException(status_code=400, detail="文件内容为空")
-
-    filename = file.filename or "未命名文档"
     file_type = _get_file_type(filename)
     if file_type == "txt":
         content = _parse_txt(file_content)
     elif file_type == "docx":
-        content = _parse_docx(file_content)
+        content, para_count = _parse_docx(file_content)
     else:
         content, page_count = _parse_pdf(file_content)
 
@@ -156,7 +160,7 @@ async def quick_parse_document(user_id: int, session_id: str, file: UploadFile) 
 # 输入：用户id、会话id
 # 从Redis获取该会话id解析后的文档内容和相关信息
 # 输出：redis存储的解析结果和相关信息，若无数据则抛出异常
-def get_quick_parse_document(user_id: int, session_id: str) -> dict | None:
+def _get_quick_parse_document_impl(user_id: int, session_id: str) -> dict | None:
     document = load_quick_parse_document(session_id)
     if document is None:
         return None
@@ -165,8 +169,8 @@ def get_quick_parse_document(user_id: int, session_id: str) -> dict | None:
     return document
 
 
-def get_parsed_content(user_id: int, session_id: str) -> dict:
-    document = get_quick_parse_document(user_id, session_id)
+def _get_parsed_content_impl(user_id: int, session_id: str) -> dict:
+    document = _get_quick_parse_document_impl(user_id, session_id)
     if document is None:
         raise HTTPException(status_code=404, detail="当前会话还没有快速解析文档，可能已过期或尚未上传")
 
@@ -179,5 +183,27 @@ def get_parsed_content(user_id: int, session_id: str) -> dict:
         "file_type": document["file_type"],
         "content": document["content"],
         "content_length": document["content_length"],
-        "remaining_seconds": ttl if ttl > 0 else 0,
+        "remaining_seconds": ttl,
     }
+
+
+class QuickParseService:
+    """Quick parse service for current-session temporary documents."""
+
+    async def quick_parse_document(
+        self,
+        user_id: int,
+        session_id: str,
+        file_content: bytes,
+        filename: str,
+    ) -> dict:
+        return await _quick_parse_document_impl(user_id, session_id, file_content, filename)
+
+    def get_quick_parse_document(self, user_id: int, session_id: str) -> dict | None:
+        return _get_quick_parse_document_impl(user_id, session_id)
+
+    def get_parsed_content(self, user_id: int, session_id: str) -> dict:
+        return _get_parsed_content_impl(user_id, session_id)
+
+
+quick_parse_service = QuickParseService()
