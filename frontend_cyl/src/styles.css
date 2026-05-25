@@ -127,6 +127,14 @@ body {
   gap: 16px;
 }
 
+.session-document {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .chat-board {
   min-height: 480px;
   display: flex;
@@ -188,6 +196,10 @@ body {
   line-height: 1.6;
 }
 
+.document-list {
+  margin-bottom: 10px;
+}
+
 .recommend-list {
   margin-top: 12px;
 }
@@ -202,6 +214,14 @@ body {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 12px;
+}
+
+.quick-parse-bar {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
 }
 
 .simple-panel {
@@ -227,6 +247,10 @@ body {
   }
 
   .composer {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-parse-bar {
     grid-template-columns: 1fr;
   }
 

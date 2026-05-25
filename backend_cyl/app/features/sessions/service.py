@@ -6,7 +6,10 @@ import os
 from openai import OpenAI
 
 from app.core.database import get_connection
+from app.features.sessions.quick_parse_service import get_quick_parse_document
 from pymysql.cursors import DictCursor
+
+MAX_PROMPT_DOCUMENT_LENGTH = 4000
 
 # 根据用户id创建会话，返回会话id
 def create_session(user_id: int) -> str:
@@ -63,14 +66,32 @@ def user_owns_session(user_id: int, session_id: str) -> bool:
 
 
 def get_chat_completion(session_id: str, user_id: int, question: str, retrieved_content: str = ""):
-    documents_message = {"documents": []}
+    quick_document = get_quick_parse_document(user_id, session_id)
+    documents = []
+    formatted_references = []
+
+    if quick_document:
+        quick_content = quick_document["content"][:MAX_PROMPT_DOCUMENT_LENGTH]
+        if len(quick_document["content"]) > MAX_PROMPT_DOCUMENT_LENGTH:
+            quick_content += "\n...(文档内容过长，已截断)"
+
+        documents.append(
+            {
+                "document_id": f"quick_parse_{session_id}",
+                "document_name": quick_document["filename"],
+                "content_with_weight": quick_content,
+                "id": f"quick_parse_{session_id}",
+                "positions": [],
+            }
+        )
+        formatted_references.append(f"[1] 当前会话文档《{quick_document['filename']}》:\n{quick_content}")
+
+    documents_message = {"documents": documents}
     yield f"event: message\ndata: {json.dumps(documents_message, ensure_ascii=False)}\n\n"
 
-    # 预留处理检索内容的逻辑，当前直接返回空列表
-    formatted_references = []
-    prompt1 = f"""
-你是一个专业的智能助手，根据用户提问回答问题
-    """
+    if not formatted_references:
+        formatted_references.append("暂无参考文档内容。")
+
     prompt = f"""
 你是一个专业的智能助手，擅长基于提供的参考资料回答用户问题。请遵循以下原则：
 

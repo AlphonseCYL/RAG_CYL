@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.features.auth.security import get_current_user
@@ -18,6 +18,7 @@ from app.features.sessions.service import (
     get_chat_completion,
     user_owns_session,
 )
+from app.features.sessions.quick_parse_service import get_parsed_content, quick_parse_document
 
 
 router = APIRouter(tags=["sessions"])
@@ -67,6 +68,28 @@ def remove_session(
 
 
 ##################################################
+#   当前会话文档快速解析
+#   输入：当前用户、session_id、上传文件
+#   输出：解析结果摘要；解析后的正文会在聊天时自动参与 prompt
+##################################################
+@router.post("/quick_parse")
+async def quick_parse_current_session_document(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    session_id: Annotated[str, Query()],
+    file: Annotated[UploadFile, File()],
+) -> dict:
+    return await quick_parse_document(current_user["id"], session_id, file)
+
+
+@router.get("/get_parsed_content")
+def read_parsed_content(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    session_id: Annotated[str, Query()],
+) -> dict:
+    return get_parsed_content(current_user["id"], session_id)
+
+
+##################################################
 #   在文档上进行对话
 #   输入：当前用户信息、会话ID、对话请求
 #   输出：对话响应的流式数据
@@ -84,5 +107,4 @@ async def chat_on_docs(
         get_chat_completion(session_id, current_user["id"], request.message),
         media_type="text/event-stream",
     )
-
 

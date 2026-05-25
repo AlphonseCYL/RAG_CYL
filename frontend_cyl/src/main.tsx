@@ -18,6 +18,7 @@ import {
 } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import './styles.css'
+import { quickParseCurrentDocument } from './features/sessions/api'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8001'
 
@@ -63,13 +64,19 @@ type ChatMessage = {
   think?: string
   loading?: boolean
   error?: string
+  documentNames?: string[]
   recommendedQuestions?: string[]
+}
+
+type ChatDocument = {
+  document_name?: string
+  content_with_weight?: string
 }
 
 type ChatStreamPayload = {
   content?: string
   thinking?: boolean
-  documents?: unknown[]
+  documents?: ChatDocument[]
   recommended_questions?: string[]
   role?: string
   error?: string
@@ -383,12 +390,18 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
 function ChatHome(props: { session?: ChatSession; token: string }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [parsing, setParsing] = useState(false)
+  const [parsedDocumentName, setParsedDocumentName] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
 
   useEffect(() => {
     setMessages([])
     setInput('')
     setSending(false)
+    setSelectedFile(null)
+    setParsing(false)
+    setParsedDocumentName('')
   }, [props.session?.id])
 
   function updateAssistantMessage(
@@ -417,6 +430,16 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
       updateAssistantMessage(assistantId, (messageItem) => ({
         ...messageItem,
         error: json.content || json.error || '后端生成回答失败',
+      }))
+      return
+    }
+
+    if (json.documents?.length) {
+      updateAssistantMessage(assistantId, (messageItem) => ({
+        ...messageItem,
+        documentNames: json.documents
+          ?.map((item) => item.document_name)
+          .filter((name): name is string => Boolean(name)),
       }))
       return
     }
@@ -466,6 +489,31 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
         }
         break
       }
+    }
+  }
+
+  async function parseCurrentDocument() {
+    if (!props.session || !selectedFile || parsing) {
+      return
+    }
+
+    setParsing(true)
+    message.destroy()
+
+    try {
+      const data = await quickParseCurrentDocument({
+        token: props.token,
+        sessionId: props.session.id,
+        file: selectedFile,
+      })
+
+      setParsedDocumentName(data.filename || selectedFile.name)
+      setSelectedFile(null)
+      message.success(data.message || '文档解析完成')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '文档解析失败')
+    } finally {
+      setParsing(false)
     }
   }
 
@@ -545,6 +593,12 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
           <Tag color="green">当前会话</Tag>
           <Typography.Title level={2}>{props.session.title}</Typography.Title>
           <Typography.Text type="secondary">session_id: {props.session.id}</Typography.Text>
+          {parsedDocumentName && (
+            <div className="session-document">
+              <Tag color="cyan">已解析</Tag>
+              <Typography.Text>{parsedDocumentName}</Typography.Text>
+            </div>
+          )}
         </div>
         <Typography.Text type="secondary">{props.session.createdAt}</Typography.Text>
       </div>
@@ -562,6 +616,15 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
             <div key={item.id} className={`message ${item.role}-message`}>
               <div className="message-role">{item.role === 'user' ? '我' : '助手'}</div>
               {item.think && <div className="message-think">{item.think}</div>}
+              {item.documentNames?.length ? (
+                <Space className="document-list" size={[8, 8]} wrap>
+                  {item.documentNames.map((name) => (
+                    <Tag key={name} color="cyan">
+                      引用：{name}
+                    </Tag>
+                  ))}
+                </Space>
+              ) : null}
               <div className="message-content">
                 {item.content || (item.loading ? '正在生成回答...' : '')}
                 {item.error && <Typography.Text type="danger">{item.error}</Typography.Text>}
@@ -579,6 +642,21 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
           ))}
         </div>
         <div className="composer">
+          <div className="quick-parse-bar">
+            <Input
+              type="file"
+              accept=".txt,.docx,.pdf"
+              disabled={parsing || sending}
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+            <Button
+              loading={parsing}
+              disabled={!selectedFile || parsing || sending}
+              onClick={parseCurrentDocument}
+            >
+              解析当前文档
+            </Button>
+          </div>
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 6 }}
             value={input}
