@@ -1,6 +1,10 @@
 from pydantic import BaseModel
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
 class SessionResponse(BaseModel):
     session_id: str
     status: str = "success"
