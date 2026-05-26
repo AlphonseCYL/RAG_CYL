@@ -1,49 +1,53 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Generator
+from urllib.parse import quote_plus
 
-from pymysql.connections import Connection
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session as DbSession
+from sqlalchemy.orm import sessionmaker
 
-from app.core.mysql_db import create_mysql_connection, ensure_mysql_database
+from app.core.config import (
+    MYSQL_CHARSET,
+    MYSQL_COLLATION,
+    MYSQL_DATABASE_NAME,
+    MYSQL_HOST,
+    MYSQL_PASSWORD,
+    MYSQL_PORT,
+    MYSQL_USER,
+)
+from app.models import Base
 
 
-@contextmanager
-def get_connection() -> Iterator[Connection]:
-    conn = create_mysql_connection()
+_user = quote_plus(MYSQL_USER)
+_password = quote_plus(MYSQL_PASSWORD)
+_database = MYSQL_DATABASE_NAME
+
+SERVER_DATABASE_URL = f"mysql+pymysql://{_user}:{_password}@{MYSQL_HOST}:{MYSQL_PORT}/?charset={MYSQL_CHARSET}"
+DATABASE_URL = (
+    f"mysql+pymysql://{_user}:{_password}@{MYSQL_HOST}:{MYSQL_PORT}/{_database}"
+    f"?charset={MYSQL_CHARSET}"
+)
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db() -> Generator[DbSession, None, None]:
+    db = SessionLocal()
     try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
+        yield db
     finally:
-        conn.close()
+        db.close()
 
 
 def init_db() -> None:
-    ensure_mysql_database()
+    server_engine = create_engine(SERVER_DATABASE_URL, pool_pre_ping=True)
+    database_name = _database.replace("`", "``")
+    with server_engine.begin() as conn:
+        conn.execute(
+            text(
+                f"CREATE DATABASE IF NOT EXISTS `{database_name}` "
+                f"CHARACTER SET {MYSQL_CHARSET} COLLATE {MYSQL_COLLATION}"
+            )
+        )
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    username VARCHAR(50) NOT NULL UNIQUE,
-                    password_hash VARCHAR(255) NOT NULL,
-                    created_at VARCHAR(64) NOT NULL
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    session_id VARCHAR(32) PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    name VARCHAR(255) NOT NULL,
-                    created_at VARCHAR(64) NOT NULL,
-                    CONSTRAINT fk_sessions_user
-                        FOREIGN KEY (user_id) REFERENCES users (id)
-                        ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                """
-            )
+    Base.metadata.create_all(bind=engine)
