@@ -4,6 +4,7 @@ import time
 import uuid
 import os
 from openai import OpenAI
+from typing import Generator
 
 from app.core.database import get_connection
 from app.features.sessions.quick_parse_service import quick_parse_service
@@ -50,6 +51,7 @@ def get_sessions(user_id: int) -> list[dict]:
 # 判断该会话是否属于该用户
 # 返回：True/False
 def user_owns_session(user_id: int, session_id: str) -> bool:
+    '''判断用户id和会话id是否存在数据库中，返回True/False'''
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -70,7 +72,7 @@ def get_chat_completion(
         user_id: int, 
         question: str, 
         retrieved_content: str = ""
-        ):
+        ) -> Generator[str, None, None]:
     '''输入：用户id、会话id、用户问题、检索到的相关内容（可选）
     输出：基于检索内容和用户问题生成的回答，流式返回给前端'''
     
