@@ -8,15 +8,15 @@ import pdfplumber
 from app.core.config import QUICK_PARSE_EXPIRE_SECONDS
 from app.core.database import SessionLocal
 from app.features.sessions.redis_store import (
-    get_quick_parse_ttl,
-    load_quick_parse_document,
-    store_quick_parse_document,
+    get_quick_parsed_doc_ttl,
+    load_quick_parsed_document_from_redis,
+    store_quick_parsed_document_to_redis,
 )
 from app.models.session import Session
 
 
 SUPPORTED_FORMATS = {"txt", "docx", "pdf"}
-MAX_CHARACTERS = 14000
+MAX_CHARACTERS = 34000
 MAX_PDF_PAGES = 4
 
 
@@ -27,7 +27,8 @@ def _get_file_type(filename: str) -> str:
     return file_type
 
 
-def _limit_text(content: str, file_type: str) -> str:
+def _limit_text_len(content: str, file_type: str) -> str:
+    '''限制content的长度，pdf按page，docx和txt按character'''
     content = content.strip()
     if not content:
         raise HTTPException(status_code=400, detail="文件中没有解析到文本内容")
@@ -87,65 +88,17 @@ def _ensure_session_owner(user_id: int, session_id: str) -> None:
         db.close()
 
 
-async def _quick_parse_document_impl(
-    user_id: int,
-    session_id: str,
-    file_content: bytes,
-    filename: str,
-) -> dict:
-    _ensure_session_owner(user_id, session_id)
 
-    file_type = _get_file_type(filename)
-    if file_type == "txt":
-        content = _parse_txt(file_content)
-    elif file_type == "docx":
-        content, _ = _parse_docx(file_content)
-    else:
-        content, _ = _parse_pdf(file_content)
-
-    content = _limit_text(content, file_type)
-    payload = {
-        "session_id": session_id,
-        "user_id": user_id,
-        "filename": filename,
-        "file_type": file_type,
-        "content": content,
-        "content_length": len(content),
-    }
-    store_quick_parse_document(session_id, payload)
-
-    if file_type == "pdf":
-        limit_info = f"PDF页数限制: {MAX_PDF_PAGES}页"
-    else:
-        limit_info = f"字符数限制: {MAX_CHARACTERS}字符"
-
-    return {
-        "status": "success",
-        "message": "文档解析完成，后续提问会自动参考当前会话文档",
-        "session_id": session_id,
-        "filename": filename,
-        "file_type": file_type,
-        "content_length": len(content),
-        "limit_info": limit_info,
-        "expiry_hours": QUICK_PARSE_EXPIRE_SECONDS // 3600,
-    }
-
-
-def _get_quick_parse_document_impl(user_id: int, session_id: str) -> dict | None:
-    document = load_quick_parse_document(session_id)
+def _get_parsed_content_impl(user_id: int, session_id: str) -> dict | None:
+    document = load_quick_parsed_document_from_redis(session_id)
     if document is None:
         return None
     if str(document.get("user_id")) != str(user_id):
         return None
-    return document
-
-
-def _get_parsed_content_impl(user_id: int, session_id: str) -> dict:
-    document = _get_quick_parse_document_impl(user_id, session_id)
     if document is None:
         raise HTTPException(status_code=404, detail="当前会话还没有快速解析文档，可能已过期或尚未上传")
 
-    ttl = get_quick_parse_ttl(session_id)
+    ttl = get_quick_parsed_doc_ttl(session_id)
 
     return {
         "status": "success",
@@ -166,13 +119,58 @@ class QuickParseService:
         file_content: bytes,
         filename: str,
     ) -> dict:
-        return await _quick_parse_document_impl(user_id, session_id, file_content, filename)
+        '''上传文档并快速解析，根据文件扩展解析，将解析内容存储在redis中'''
+        
+        _ensure_session_owner(user_id, session_id)
 
-    def get_quick_parse_document(self, user_id: int, session_id: str) -> dict | None:
-        return _get_quick_parse_document_impl(user_id, session_id)
+        # 根据文件扩展名判断文件类型，并调用相应的解析函数获得文本内容str
+        file_type = _get_file_type(filename)
+        if file_type == "txt":
+            content = _parse_txt(file_content)
+        elif file_type == "docx":
+            content, _ = _parse_docx(file_content)
+        else:
+            content, _ = _parse_pdf(file_content)
 
-    def get_parsed_content(self, user_id: int, session_id: str) -> dict:
-        return _get_parsed_content_impl(user_id, session_id)
+        # 检查是否超过长度限制
+        content = _limit_text_len(content, file_type)
+        payload = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "filename": filename,
+            "file_type": file_type,
+            "content": content,
+            "content_length": len(content),
+        }
+        # 存储解析结果到Redis
+        store_quick_parsed_document_to_redis(session_id, payload)
+        
+        # 构造返回结果
+        if file_type == "pdf":
+            limit_info = f"PDF页数限制: {MAX_PDF_PAGES}页"
+        else:
+            limit_info = f"字符数限制: {MAX_CHARACTERS}字符"
+        return {
+            "status": "success",
+            "message": "文档解析完成，后续提问会自动参考当前会话文档",
+            "session_id": session_id,
+            "filename": filename,
+            "file_type": file_type,
+            "content_length": len(content),
+            "limit_info": limit_info,
+            "expiry_hours": QUICK_PARSE_EXPIRE_SECONDS // 3600,
+        }
+
+    def get_quick_parsed_document(self, user_id: str, session_id: str) -> dict:
+        '''根据用户ID和会话ID从Redis中获得快速解析的文档内容，供聊天使用'''
+        document = load_quick_parsed_document_from_redis(session_id)
+        if document is None:
+            return {}
+        if str(document.get("user_id")) != user_id:
+            return {}
+        if document is None:
+            raise HTTPException(status_code=404, detail="当前会话还没有快速解析文档，可能已过期或尚未上传")
+        return document
 
 
 quick_parse_service = QuickParseService()

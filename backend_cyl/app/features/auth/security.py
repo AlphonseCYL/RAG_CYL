@@ -12,6 +12,7 @@ from app.core.config import (
     JWT_ALGORITHM,
     JWT_SECRET_KEY,
 )
+from app.features.auth.schemas import UserInfo
 
 # 生成随机 salt，再根据输入密码生成 hash，输出格式为 salt$hash。
 def hash_password(password: str) -> str:
@@ -39,7 +40,7 @@ def create_access_token(user_id: int, username: str) -> str:
 
 # 从 Authorization 请求头中提取token并验证 JWT，
 # decode后返回当前用户信息（id 和 username）。
-def get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict:
+def get_current_user(authorization: Annotated[str | None, Header()] = None) -> UserInfo:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,4 +56,4 @@ def get_current_user(authorization: Annotated[str | None, Header()] = None) -> d
             detail="登录状态已失效",
         ) from exc
 
-    return {"id": int(payload["sub"]), "username": payload["username"]}
+    return UserInfo(id=int(payload["sub"]), username=payload["username"])

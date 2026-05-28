@@ -63,7 +63,15 @@ def rerank_similarity(query, texts):
 
 
 
-def generate_embedding(text: str | List[str], api_key: str = None, base_url: str = None, model_name: str = "text-embedding-v3", dimensions: int = 1024, encoding_format: str = "float", max_batch_size: int = 10):
+def generate_embedding(
+        text: str | List[str], 
+        api_key: str = None, 
+        base_url: str = None, 
+        model_name: str = "text-embedding-v3", 
+        dimensions: int = 1024, 
+        encoding_format: str = "float", 
+        max_batch_size: int = 10
+        ):
     """
     生成文本的向量嵌入
     
