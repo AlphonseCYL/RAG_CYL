@@ -120,7 +120,7 @@ def user_owns_session(user_id: int, session_id: str) -> bool:
 def generate_recommended_questions(
         user_question: str, 
         session_id = None, 
-        retrieved_content = None
+        retrieved_content = []
         ) -> list[str | None]:
     # 判断是否有文档上下文
     has_documents = bool(retrieved_content and len(retrieved_content) > 0)
