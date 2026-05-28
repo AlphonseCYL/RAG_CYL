@@ -57,6 +57,23 @@ type ChatSession = {
   createdAt: string
 }
 
+type HistoryMessageItem = {
+  id: number
+  session_id: string
+  user_question: string
+  model_answer: string
+  documents: ChatDocument[] | string
+  recommended_questions: string[] | string
+  think: string
+  created_at: string
+}
+
+type MessageListResponse = {
+  messages: HistoryMessageItem[]
+  status: string
+  message: string
+}
+
 type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -86,6 +103,54 @@ function createLocalId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function parseStringArray(value: string[] | string): string[] {
+  if (Array.isArray(value)) {
+    return value
+  }
+
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function parseHistoryDocuments(value: ChatDocument[] | string): ChatDocument[] {
+  if (Array.isArray(value)) {
+    return value
+  }
+
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function historyItemToChatMessages(item: HistoryMessageItem): ChatMessage[] {
+  const documents = parseHistoryDocuments(item.documents)
+
+  return [
+    {
+      id: `history-${item.id}-user`,
+      role: 'user',
+      content: item.user_question,
+    },
+    {
+      id: `history-${item.id}-assistant`,
+      role: 'assistant',
+      content: item.model_answer,
+      think: item.think || undefined,
+      documentNames: documents
+        .map((document) => document.document_name)
+        .filter((name): name is string => Boolean(name)),
+      recommendedQuestions: parseStringArray(item.recommended_questions),
+    },
+  ]
+}
+
 function getErrorMessage(data: unknown): string {
   if (!data || typeof data !== 'object') {
     return '请求失败'
@@ -98,7 +163,7 @@ function getErrorMessage(data: unknown): string {
 
   if (Array.isArray(detail)) {
     const firstError = detail[0] as { loc?: string[]; msg?: string } | undefined
-    const fieldName = firstError?.loc?.at(-1)
+    const fieldName = firstError?.loc?.[firstError.loc.length - 1]
     if (fieldName === 'password') {
       return '密码至少需要 6 个字符'
     }
@@ -404,6 +469,7 @@ function ChatHome(props: {
   const [parsing, setParsing] = useState(false)
   const [parsedDocumentName, setParsedDocumentName] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   useEffect(() => {
     setMessages([])
@@ -412,7 +478,40 @@ function ChatHome(props: {
     setSelectedFile(null)
     setParsing(false)
     setParsedDocumentName('')
-  }, [props.session?.id])
+
+    if (!props.session) {
+      return
+    }
+
+    let cancelled = false
+    async function loadHistoryMessages() {
+      setLoadingHistory(true)
+      try {
+        const data = await request<MessageListResponse>(
+          `/get_messages?session_id=${encodeURIComponent(props.session!.id)}`,
+          {},
+          props.token,
+        )
+        if (!cancelled) {
+          setMessages(data.messages.flatMap(historyItemToChatMessages))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          message.error(error instanceof Error ? error.message : '加载会话记录失败')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingHistory(false)
+        }
+      }
+    }
+
+    loadHistoryMessages()
+
+    return () => {
+      cancelled = true
+    }
+  }, [props.session, props.token])
 
   function updateAssistantMessage(
     assistantId: string,
@@ -622,8 +721,11 @@ function ChatHome(props: {
         <div className="message-list">
           {messages.length === 0 && (
             <div className="message assistant-message">
-              新会话窗口已创建。现在可以发送问题，前端会读取{' '}
-              <Typography.Text code>/chat_on_docs</Typography.Text> 的 SSE 流式响应。
+              {loadingHistory
+                ? '正在加载该会话的历史对话...'
+                : '新会话窗口已创建。现在可以发送问题，前端会读取 '}
+              {!loadingHistory && <Typography.Text code>/chat_on_docs</Typography.Text>}
+              {!loadingHistory && ' 的 SSE 流式响应。'}
             </div>
           )}
 

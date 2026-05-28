@@ -1,8 +1,0 @@
-# set global timezone (tzset is Unix-only)
-import time
-
-if hasattr(time, "tzset"):
-    time.tzset()
-
-from .get_logger import get_logger
-logger = get_logger()
