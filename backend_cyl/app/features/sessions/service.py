@@ -8,15 +8,25 @@ from openai import OpenAI
 
 from app.core.database import SessionLocal
 from app.features.sessions.quick_parse_service import quick_parse_service
+from app.models.message import Message
 from app.models.session import Session
-from app.core.database import get_db
 
-from sqlalchemy import text
 from fastapi import HTTPException
 
 from sqlalchemy.exc import SQLAlchemyError
 
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.6-plus")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _json_loads_or_raw(value: str):
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return value
 
 def create_session(user_id: int) -> str:
     session_id = uuid.uuid4().hex[:16]
@@ -55,6 +65,40 @@ def get_sessions(user_id: int) -> list[dict]:
                 "created_at": session.created_at,
             }
             for session in sessions
+        ]
+    finally:
+        db.close()
+
+
+def get_messages(user_id: int, session_id: str) -> list[dict]:
+    db = SessionLocal()
+    try:
+        session = (
+            db.query(Session)
+            .filter(Session.user_id == user_id, Session.session_id == session_id)
+            .first()
+        )
+        if session is None:
+            raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+
+        messages = (
+            db.query(Message)
+            .filter(Message.session_id == session_id)
+            .order_by(Message.created_at.asc(), Message.id.asc())
+            .all()
+        )
+        return [
+            {
+                "id": message.id,
+                "session_id": message.session_id,
+                "user_question": message.user_question,
+                "model_answer": message.model_answer,
+                "documents": _json_loads_or_raw(message.documents),
+                "recommended_questions": _json_loads_or_raw(message.recommended_questions),
+                "think": message.think,
+                "created_at": message.created_at,
+            }
+            for message in messages
         ]
     finally:
         db.close()
@@ -170,46 +214,28 @@ def generate_recommended_questions(
 
 ###########################################################################
 def write_chat_to_db(session_id: str, user_question: str, model_answer: str, all_documents, recommended_questions, think ):
-    """
-    将对话数据写入数据库。
-
-    :param session_id: 会话 ID
-    :param user_question: 用户问题
-    :param model_answer: 大模型的回答
-    :param all_documents: 所有文档内容
-    :param recommended_questions: 推荐问题
-    :param think: 思考过程
-    """
-    db = next(get_db())  # 获取数据库会话
+    db = SessionLocal()
     try:
-        documents_json = json.dumps(all_documents, ensure_ascii=False)
-        recommended_questions_json = json.dumps(recommended_questions, ensure_ascii=False)
-
-        db.execute(
-            text(
-                """
-                INSERT INTO messages (session_id, user_question, model_answer, documents, recommended_questions, think, created_at, updated_at )
-                VALUES (:session_id, :user_question, :model_answer, :documents, :recommended_questions, :think, :created_at, :updated_at)
-                """
-            ),
-            {
-                "session_id": session_id,
-                "user_question": user_question,
-                "model_answer": model_answer,
-                "documents": documents_json,
-                "recommended_questions": recommended_questions_json,
-                "think": think,
-                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            }
+        now = _utc_now()
+        message = Message(
+            session_id=session_id,
+            user_question=user_question,
+            model_answer=model_answer,
+            documents=json.dumps(all_documents, ensure_ascii=False),
+            recommended_questions=json.dumps(recommended_questions, ensure_ascii=False),
+            think=think,
+            created_at=now,
+            updated_at=now,
         )
+        db.add(message)
         db.commit()
-        print("对话数据插入成功。。。")
+        print("对话数据已写入 messages 表")
+        return
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to write to database: {str(e)}"
+            detail=f"Failed to write to database: {str(e)}",
         )
     finally:
         db.close()
@@ -230,47 +256,32 @@ def generate_session_name(question: str) -> str:
 
 
 def update_session_name(session_id: str, user_id: str, question: str) -> None:
-    '''
-    根据 session_id 查数据库的表 sessions，有的话直接跳过，没有的话先生成 session_name，再插入。
-    根据用户问题生成会话名称，并更新数据库中的会话名称。
-    期望为每次用户提问后，判断是否有一个会话名称，如果已经存在则不更新，保持原有名称不变，避免频繁更新数据库。
-
-    :param session_id: 会话 ID
-    :param user_id: 用户 ID
-    :param question: 用户问题
-    '''
-    db = next(get_db())  # 获取数据库会话
+    db = SessionLocal()
     try:
-        # 查询是否存在对应会话
-        search_session = db.execute(
-            text("SELECT session_id FROM sessions WHERE session_id = :session_id AND user_id = :user_id"),
-            {"session_id": session_id, "user_id": user_id}
-        ).fetchone
-        if search_session:
-            print("会话已存在，无需更新名称")
-        else:
-            # 生成会话名称
-            session_name = generate_session_name(question)
-            # 更新会话名称
-            db.execute(
-                text("UPDATE sessions SET name = :name WHERE session_id = :session_id AND user_id = :user_id"),
-                {"name": session_name, "session_id": session_id, "user_id": user_id}
-            )
-            db.commit()
-            print(f"会话名称更新成功，新的名称: {session_name}")
+        session = (
+            db.query(Session)
+            .filter(Session.session_id == session_id, Session.user_id == user_id)
+            .first()
+        )
+        if session is None:
+            return
 
-    
+        if session.name and session.name != "新对话":
+            print("会话已有名称，无需更新")
+            return
+
+        session.name = generate_session_name(question)
+        db.commit()
+        print(f"会话名称已更新为: {session.name}")
+        return
     except SQLAlchemyError as e:
         db.rollback()
-        print(f"数据库操作失败: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"数据库操作失败: {str(e)}"
-        )   
+            detail=f"数据库操作失败: {str(e)}",
+        )
     finally:
         db.close()
-
-
 ##########################################################################
 def get_chat_completion(
     session_id: str,
@@ -482,7 +493,7 @@ def get_chat_completion(
                                  thinking)
 
                 # 生成会话名称
-                update_session_name(session_id, question, user_id)
+                update_session_name(session_id, user_id, question)
                 break
 
 
@@ -495,13 +506,20 @@ def get_chat_completion(
 def delete_session(user_id: int, session_id: str) -> bool:
     db = SessionLocal()
     try:
-        deleted_count = (
+        session = (
             db.query(Session)
             .filter(Session.user_id == user_id, Session.session_id == session_id)
-            .delete(synchronize_session=False)
+            .first()
         )
+        if session is None:
+            return False
+
+        db.query(Message).filter(Message.session_id == session_id).delete(
+            synchronize_session=False
+        )
+        db.delete(session)
         db.commit()
-        return deleted_count > 0
+        return True
     except Exception:
         db.rollback()
         raise

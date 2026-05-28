@@ -6,10 +6,12 @@ from app.features.auth.schemas import UserInfo
 from app.features.auth.security import get_current_user
 from app.features.sessions.schemas import (
     DeleteSessionResponse,
+    MessageItem,
+    MessageListResponse,
     SessionItem,
     SessionListResponse,
 )
-from app.features.sessions.service import delete_session, get_sessions
+from app.features.sessions.service import delete_session, get_messages, get_sessions
 
 
 router = APIRouter(tags=["history"])
@@ -22,6 +24,16 @@ def list_sessions(
     sessions = get_sessions(current_user.id)
     session_items = [SessionItem(**session) for session in sessions]
     return SessionListResponse(sessions=session_items)
+
+
+@router.get("/get_messages", response_model=MessageListResponse)
+def list_messages(
+    session_id: str,
+    current_user: Annotated[UserInfo, Depends(get_current_user)],
+) -> MessageListResponse:
+    messages = get_messages(current_user.id, session_id)
+    message_items = [MessageItem(**message) for message in messages]
+    return MessageListResponse(messages=message_items)
 
 
 @router.delete("/sessions/{session_id}", response_model=DeleteSessionResponse)

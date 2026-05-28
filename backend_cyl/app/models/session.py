@@ -13,3 +13,8 @@ class Session(Base):
     created_at: Mapped[str] = mapped_column(String(64), nullable=False)
 
     user = relationship("User", back_populates="sessions")
+    messages = relationship(
+        "Message",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )

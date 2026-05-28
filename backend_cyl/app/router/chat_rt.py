@@ -50,7 +50,7 @@ def read_parsed_content(
     current_user: Annotated[UserInfo, Depends(get_current_user)],
     session_id: Annotated[str, Query()],
 ) -> dict:
-    return quick_parse_service.get_quick_parsed_document(current_user.id, session_id)
+    return quick_parse_service.get_quick_parsed_document(str(current_user.id), session_id)
 
 
 # 基于解析后的文档内容进行聊天
@@ -65,6 +65,6 @@ async def chat_on_docs(
         raise HTTPException(status_code=404, detail="会话不存在或无权访问")
 
     return StreamingResponse(
-        get_chat_completion(session_id, current_user.id, request.message),
+        get_chat_completion(session_id, str(current_user.id), request.message),
         media_type="text/event-stream",
     )

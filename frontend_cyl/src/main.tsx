@@ -370,7 +370,13 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
         </header>
 
         <main className="workspace">
-          {activeKey === 'chat' && <ChatHome session={activeSession} token={props.token} />}
+          {activeKey === 'chat' && (
+            <ChatHome
+              session={activeSession}
+              token={props.token}
+              onSessionUpdated={loadSessions}
+            />
+          )}
           {activeKey === 'repository' && <RepositoryHome />}
           {activeKey === 'history' && (
             <HistoryHome
@@ -387,7 +393,11 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
   )
 }
 
-function ChatHome(props: { session?: ChatSession; token: string }) {
+function ChatHome(props: {
+  session?: ChatSession
+  token: string
+  onSessionUpdated: () => Promise<void>
+}) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -537,6 +547,7 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
       { id: assistantId, role: 'assistant', content: '', loading: true },
     ])
 
+    let completed = false
     try {
       const response = await fetch(
         `${API_BASE}/chat_on_docs?session_id=${encodeURIComponent(props.session.id)}`,
@@ -560,6 +571,7 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
       }
 
       await readChatStream(response.body.getReader(), assistantId)
+      completed = true
     } catch (error) {
       updateAssistantMessage(assistantId, (messageItem) => ({
         ...messageItem,
@@ -571,6 +583,9 @@ function ChatHome(props: { session?: ChatSession; token: string }) {
         loading: false,
       }))
       setSending(false)
+      if (completed) {
+        await props.onSessionUpdated()
+      }
     }
   }
 
