@@ -27,6 +27,17 @@ body {
   margin-top: 0;
 }
 
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.login-brand .ant-typography {
+  margin-bottom: 4px;
+}
+
 .app-shell {
   min-height: 100vh;
   background: #eef2f6;
@@ -97,7 +108,7 @@ body {
 }
 
 .workspace {
-  width: min(1120px, 100%);
+  width: min(1240px, 100%);
   margin: 0 auto;
   padding: 28px 32px 40px;
 }
@@ -135,6 +146,13 @@ body {
   margin-top: 12px;
 }
 
+.chat-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+
 .chat-board {
   min-height: 480px;
   display: flex;
@@ -145,6 +163,22 @@ body {
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid #e6ebf1;
+}
+
+.reference-panel {
+  position: sticky;
+  top: 108px;
+  min-height: 300px;
+  padding: 20px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e6ebf1;
+}
+
+.reference-panel .ant-tag {
+  cursor: pointer;
+  white-space: normal;
+  line-height: 1.5;
 }
 
 .message-list {
@@ -224,7 +258,8 @@ body {
   align-items: center;
 }
 
-.simple-panel {
+.simple-panel,
+.repository-page {
   padding: 24px;
   border-radius: 8px;
   background: #ffffff;
@@ -233,6 +268,59 @@ body {
 
 .session-list-item {
   cursor: default;
+}
+
+.repository-page {
+  display: grid;
+  gap: 22px;
+}
+
+.repository-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.repository-hero .ant-typography {
+  margin-bottom: 8px;
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  align-items: start;
+}
+
+.upload-panel {
+  min-height: 320px;
+  padding: 20px;
+  border: 1px solid #e6ebf1;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.upload-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+  border-radius: 8px;
+  color: #2f6fed;
+  background: #eaf1ff;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.upload-submit {
+  margin-top: 14px;
+}
+
+.upload-result {
+  display: grid;
+  gap: 12px;
 }
 
 @media (max-width: 768px) {
@@ -246,6 +334,15 @@ body {
     padding: 18px;
   }
 
+  .chat-layout,
+  .upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-panel {
+    position: static;
+  }
+
   .composer {
     grid-template-columns: 1fr;
   }
@@ -255,6 +352,10 @@ body {
   }
 
   .session-header {
+    flex-direction: column;
+  }
+
+  .repository-hero {
     flex-direction: column;
   }
 }

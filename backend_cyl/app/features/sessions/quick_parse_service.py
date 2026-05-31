@@ -12,7 +12,7 @@ from app.features.sessions.redis_store import (
     load_quick_parsed_document_from_redis,
     store_quick_parsed_document_to_redis,
 )
-from app.models.session import Session
+from app.db_models.session import Session
 
 
 SUPPORTED_FORMATS = {"txt", "docx", "pdf"}

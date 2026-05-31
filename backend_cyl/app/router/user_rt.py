@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.features.auth.schemas import AuthRequest, TokenResponse
+from app.features.auth.schemas import AuthRequest, TokenResponse, UserInfo
 from app.features.auth.security import get_current_user
 from app.features.auth.service import login_user, register_user
 
@@ -22,5 +22,5 @@ def login(request: AuthRequest) -> TokenResponse:
 
 
 @router.get("/me")
-def me(current_user: Annotated[dict, Depends(get_current_user)]) -> dict:
+def me(current_user: Annotated[UserInfo, Depends(get_current_user)]) -> UserInfo:
     return current_user

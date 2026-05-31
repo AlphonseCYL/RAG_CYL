@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.database import SessionLocal
 from app.features.auth.schemas import TokenResponse
 from app.features.auth.security import create_access_token, hash_password, verify_password
-from app.models.user import User
+from app.db_models.user import User
 
 
 def register_user(username: str, password: str) -> None:

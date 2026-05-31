@@ -2,6 +2,7 @@ from collections.abc import Generator
 from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import sessionmaker
 
@@ -14,7 +15,7 @@ from app.core.config import (
     MYSQL_PORT,
     MYSQL_USER,
 )
-from app.models import Base
+from app.db_models import Base
 
 
 _user = quote_plus(MYSQL_USER)
@@ -104,3 +105,38 @@ def _ensure_messages_schema() -> None:
         conn.execute(text("ALTER TABLE messages MODIFY documents LONGTEXT NOT NULL"))
         conn.execute(text("ALTER TABLE messages MODIFY recommended_questions LONGTEXT NOT NULL"))
         conn.execute(text("ALTER TABLE messages MODIFY think LONGTEXT NOT NULL"))
+
+
+def insert_knowledgebase(user_id:str,
+                         session_id:str,
+                         file_name:str
+                         ):
+    '''
+    将知识库信息插入到 knowledgebases 表中。
+    改表不存储文件信息，只存储文件名和其对应的用户id
+
+    :param user_id: 用户 ID
+    :param file_name: 文件名称
+    '''
+
+    db = next(get_db())
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO knowledgebases (user_id, session_id, file_name)
+                VALUES (:user_id, :session_id, :file_name)
+                """
+            ),
+            {
+                "user_id":user_id,
+                "session_id":session_id,
+                "file_name":file_name
+            }
+        )
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise RuntimeError(f"插入MySQL数据库表knowledgebase失败:{str(e)}")
+    finally:
+        db.close()

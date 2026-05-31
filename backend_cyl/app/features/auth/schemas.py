@@ -12,5 +12,9 @@ class TokenResponse(BaseModel):
     username: str
 
 class UserInfo(BaseModel):
+    '''
+    id:int 用户id
+    username:str 用户名
+    '''
     id: int
     username: str

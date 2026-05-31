@@ -8,8 +8,8 @@ from openai import OpenAI
 
 from app.core.database import SessionLocal
 from app.features.sessions.quick_parse_service import quick_parse_service
-from app.models.message import Message
-from app.models.session import Session
+from app.db_models.message import Message
+from app.db_models.session import Session
 
 from fastapi import HTTPException
 

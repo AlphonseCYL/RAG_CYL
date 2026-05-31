@@ -1,21 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import {
+  Alert,
   Button,
   Card,
   ConfigProvider,
+  Divider,
+  Empty,
   Form,
   Input,
   Layout,
   List,
   Menu,
   Popconfirm,
+  Progress,
   Space,
   Tabs,
   Tag,
   Typography,
+  Upload,
   message,
 } from 'antd'
+import type { UploadFile } from 'antd/es/upload/interface'
 import zhCN from 'antd/locale/zh_CN'
 import './styles.css'
 import { quickParseCurrentDocument } from './features/sessions/api'
@@ -86,6 +92,7 @@ type ChatMessage = {
 }
 
 type ChatDocument = {
+  document_id?: string
   document_name?: string
   content_with_weight?: string
 }
@@ -97,6 +104,15 @@ type ChatStreamPayload = {
   recommended_questions?: string[]
   role?: string
   error?: string
+}
+
+type UploadFilesResponse = {
+  status: string
+  message: string
+  successful_files?: string[]
+  failed_files?: string[]
+  duplicate_files?: string[]
+  total_files?: number
 }
 
 function createLocalId() {
@@ -161,6 +177,20 @@ function getErrorMessage(data: unknown): string {
     return detail
   }
 
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    const payload = detail as {
+      message?: string
+      duplicate_files?: string[]
+      failed_files?: string[]
+    }
+    const files = payload.duplicate_files?.length
+      ? `：${payload.duplicate_files.join('、')}`
+      : payload.failed_files?.length
+        ? `：${payload.failed_files.join('、')}`
+        : ''
+    return `${payload.message || '请求失败'}${files}`
+  }
+
   if (Array.isArray(detail)) {
     const firstError = detail[0] as { loc?: string[]; msg?: string } | undefined
     const fieldName = firstError?.loc?.[firstError.loc.length - 1]
@@ -194,6 +224,35 @@ async function request<T>(
   if (!response.ok) {
     throw new Error(getErrorMessage(data))
   }
+  return data
+}
+
+async function uploadKnowledgeFiles(params: {
+  token: string
+  sessionId: string
+  files: File[]
+}): Promise<UploadFilesResponse> {
+  const formData = new FormData()
+  params.files.forEach((file) => {
+    formData.append('files', file)
+  })
+
+  const response = await fetch(
+    `${API_BASE}/upload_files?session_id=${encodeURIComponent(params.sessionId)}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${params.token}`,
+      },
+      body: formData,
+    },
+  )
+
+  const data = (await response.json().catch(() => ({}))) as UploadFilesResponse
+  if (!response.ok) {
+    throw new Error(getErrorMessage(data))
+  }
+
   return data
 }
 
@@ -269,7 +328,13 @@ function App() {
   return (
     <main className="page">
       <Card className="panel">
-        <Typography.Title level={2}>智能文档问答系统</Typography.Title>
+        <div className="login-brand">
+          <div className="brand-mark">文</div>
+          <div>
+            <Typography.Title level={2}>智能文档问答系统</Typography.Title>
+            <Typography.Text type="secondary">复现主项目的登录、会话与文档问答流程</Typography.Text>
+          </div>
+        </div>
         <Tabs
           activeKey={activeTab}
           onChange={changeTab}
@@ -417,7 +482,7 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           onClick={(item) => setActiveKey(item.key)}
           items={[
             { key: 'chat', label: '对话工作台' },
-            { key: 'repository', label: '知识库文件' },
+            { key: 'repository', label: '文档上传' },
             { key: 'history', label: '历史会话' },
           ]}
         />
@@ -428,10 +493,13 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           <div>
             <Typography.Title level={3}>欢迎回来，{props.username}</Typography.Title>
             <Typography.Text type="secondary">
-              登录后会自动从后端读取当前用户的历史会话。
+              当前前端只调用 backend_cyl 已有路由，适合逐步验证复现进度。
             </Typography.Text>
           </div>
-          <Button onClick={props.onLogout}>退出登录</Button>
+          <Space>
+            {activeSessionId && <Tag color="blue">session: {activeSessionId}</Tag>}
+            <Button onClick={props.onLogout}>退出登录</Button>
+          </Space>
         </header>
 
         <main className="workspace">
@@ -442,7 +510,13 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
               onSessionUpdated={loadSessions}
             />
           )}
-          {activeKey === 'repository' && <RepositoryHome />}
+          {activeKey === 'repository' && (
+            <RepositoryHome
+              session={activeSession}
+              token={props.token}
+              onCreateSession={createNewSession}
+            />
+          )}
           {activeKey === 'history' && (
             <HistoryHome
               sessions={sessions}
@@ -470,6 +544,7 @@ function ChatHome(props: {
   const [parsedDocumentName, setParsedDocumentName] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const latestAssistant = [...messages].reverse().find((item) => item.role === 'assistant')
 
   useEffect(() => {
     setMessages([])
@@ -717,7 +792,8 @@ function ChatHome(props: {
         <Typography.Text type="secondary">{props.session.createdAt}</Typography.Text>
       </div>
 
-      <div className="chat-board">
+      <div className="chat-layout">
+        <div className="chat-board">
         <div className="message-list">
           {messages.length === 0 && (
             <div className="message assistant-message">
@@ -771,7 +847,7 @@ function ChatHome(props: {
               disabled={!selectedFile || parsing || sending}
               onClick={parseCurrentDocument}
             >
-              解析当前文档
+              快速解析
             </Button>
           </div>
           <Input.TextArea
@@ -791,18 +867,169 @@ function ChatHome(props: {
           </Button>
         </div>
       </div>
+        <aside className="reference-panel">
+          <Typography.Title level={4}>回答依据</Typography.Title>
+          <Typography.Text type="secondary">
+            SSE 返回的引用文档和推荐追问会在这里同步展示。
+          </Typography.Text>
+          <Divider />
+          {latestAssistant?.documentNames?.length ? (
+            <Space size={[8, 8]} wrap>
+              {latestAssistant.documentNames.map((name) => (
+                <Tag key={name} color="cyan">
+                  {name}
+                </Tag>
+              ))}
+            </Space>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无引用文档" />
+          )}
+          {latestAssistant?.recommendedQuestions?.length ? (
+            <>
+              <Divider />
+              <Typography.Title level={5}>推荐追问</Typography.Title>
+              <Space size={[8, 8]} wrap>
+                {latestAssistant.recommendedQuestions.map((question) => (
+                  <Tag key={question} color="blue" onClick={() => setInput(question)}>
+                    {question}
+                  </Tag>
+                ))}
+              </Space>
+            </>
+          ) : null}
+        </aside>
+      </div>
     </section>
   )
 }
 
-function RepositoryHome() {
+function RepositoryHome(props: {
+  session?: ChatSession
+  token: string
+  onCreateSession: () => Promise<void>
+}) {
+  const [fileList, setFileList] = useState<UploadFile[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [lastResult, setLastResult] = useState<UploadFilesResponse | null>(null)
+
+  async function submitUpload() {
+    if (!props.session) {
+      message.warning('请先新建或打开一个会话')
+      return
+    }
+
+    const files = fileList.flatMap((item) =>
+      item.originFileObj ? [item.originFileObj as File] : [],
+    )
+
+    if (!files.length) {
+      message.warning('请选择要上传的文件')
+      return
+    }
+
+    setUploading(true)
+    message.destroy()
+    try {
+      const result = await uploadKnowledgeFiles({
+        token: props.token,
+        sessionId: props.session.id,
+        files,
+      })
+      setLastResult(result)
+      setFileList([])
+      message.success(result.message || '上传完成')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
-    <section className="simple-panel">
-      <Typography.Title level={3}>知识库文件</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        这里后续接入文件列表、上传和删除。建议下一步先实现文件列表接口。
-      </Typography.Paragraph>
-      <Button type="primary">上传文件</Button>
+    <section className="repository-page">
+      <div className="repository-hero">
+        <div>
+          <Typography.Title level={2}>文档上传</Typography.Title>
+          <Typography.Text type="secondary">
+            对齐主项目知识库入口，当前接入 backend_cyl 的 POST /upload_files。
+          </Typography.Text>
+        </div>
+        {props.session ? (
+          <Tag color="green">上传到 {props.session.title}</Tag>
+        ) : (
+          <Button type="primary" onClick={props.onCreateSession}>
+            新建会话
+          </Button>
+        )}
+      </div>
+
+      <div className="upload-grid">
+        <div className="upload-panel">
+          <Typography.Title level={4}>添加文档</Typography.Title>
+          <Upload.Dragger
+            multiple
+            fileList={fileList}
+            beforeUpload={() => false}
+            onChange={({ fileList: nextList }) => setFileList(nextList)}
+            disabled={uploading || !props.session}
+          >
+            <div className="upload-icon">+</div>
+            <Typography.Text>拖拽文件到这里，或点击选择</Typography.Text>
+            <Typography.Paragraph type="secondary">
+              文件会携带当前 session_id 上传，后端负责保存、解析并写入 ES。
+            </Typography.Paragraph>
+          </Upload.Dragger>
+          <Button
+            type="primary"
+            block
+            className="upload-submit"
+            loading={uploading}
+            disabled={!props.session || fileList.length === 0}
+            onClick={submitUpload}
+          >
+            开始上传解析
+          </Button>
+        </div>
+
+        <div className="upload-panel">
+          <Typography.Title level={4}>上传状态</Typography.Title>
+          {!props.session && (
+            <Alert
+              type="info"
+              showIcon
+              message="需要先创建会话"
+              description="backend_cyl 的 /upload_files 目前要求 session_id，并校验会话归属。"
+            />
+          )}
+          {uploading && <Progress percent={60} status="active" showInfo={false} />}
+          {lastResult ? (
+            <div className="upload-result">
+              <Tag color={lastResult.status === 'success' ? 'green' : 'orange'}>
+                {lastResult.status}
+              </Tag>
+              <Typography.Paragraph>{lastResult.message}</Typography.Paragraph>
+              {lastResult.successful_files?.length ? (
+                <List
+                  size="small"
+                  header="成功文件"
+                  dataSource={lastResult.successful_files}
+                  renderItem={(item) => <List.Item>{item}</List.Item>}
+                />
+              ) : null}
+              {lastResult.failed_files?.length ? (
+                <List
+                  size="small"
+                  header="失败文件"
+                  dataSource={lastResult.failed_files}
+                  renderItem={(item) => <List.Item>{item}</List.Item>}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无上传结果" />
+          )}
+        </div>
+      </div>
     </section>
   )
 }
