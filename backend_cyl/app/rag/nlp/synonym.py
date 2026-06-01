@@ -20,7 +20,7 @@ import os
 import time
 import re
 from nltk.corpus import wordnet
-from service.core.api.utils.file_utils import get_project_base_directory
+from app.rag.utils.file_utils import get_project_base_dir
 
 
 class Dealer:
@@ -29,7 +29,7 @@ class Dealer:
         self.lookup_num = 100000000
         self.load_tm = time.time() - 1000000
         self.dictionary = None
-        path = os.path.join(get_project_base_directory(), "rag/res", "synonym.json")
+        path = os.path.join(get_project_base_dir(), "res", "synonym.json")
         try:
             self.dictionary = json.load(open(path, 'r'))
         except Exception:

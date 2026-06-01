@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 
 
-class DocumentUploadService:
+class DocumentUploadRecordService:
     """文档上传记录服务"""
     
     @staticmethod

@@ -20,8 +20,8 @@ import json
 import re
 import os
 import numpy as np
-from service.core.rag.nlp import rag_tokenizer
-from service.core.api.utils.file_utils import get_project_base_directory
+from app.rag.nlp import rag_tokenizer
+from app.rag.utils.file_utils import get_project_base_dir
 
 
 class Dealer:
@@ -78,7 +78,7 @@ class Dealer:
                 return set(res.keys())
             return res
 
-        fnm = os.path.join(get_project_base_directory(), "rag/res")
+        fnm = os.path.join(get_project_base_dir(), "res")
         self.ne, self.df = {}, {}
         try:
             self.ne = json.load(open(os.path.join(fnm, "ner.json"), "r"))

@@ -25,7 +25,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch_dsl import UpdateByQuery, Q, Search, Index
 from app.rag.utils import singleton
 from app.rag.utils.file_utils import get_project_base_dir
-from app.rag.utils.doc_store_conn import MatchExpr, OrderByExpr, MatchTextExpr, MatchDenseExpr, FusionExpr
+from app.rag.utils.doc_store_conn import MatchExpr, OrderByExpr, MatchTextExpr, MatchDenseExpr, FusionExpr, DocStoreConnection
 from app.rag.nlp import is_english
 from dotenv import load_dotenv
 

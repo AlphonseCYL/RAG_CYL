@@ -25,7 +25,7 @@ import sys
 from hanziconv import HanziConv
 from nltk import word_tokenize
 from nltk.stem import PorterStemmer, WordNetLemmatizer
-from service.core.api.utils.file_utils import get_project_base_directory
+from app.rag.utils.file_utils import get_project_base_dir
 
 
 class RagTokenizer:
@@ -61,7 +61,7 @@ class RagTokenizer:
     def __init__(self, debug=False):
         self.DEBUG = debug
         self.DENOMINATOR = 1000000
-        self.DIR_ = os.path.join(get_project_base_directory(), "rag/res", "huqie")
+        self.DIR_ = os.path.join(get_project_base_dir(), "res", "huqie")
 
         self.stemmer = PorterStemmer()
         self.lemmatizer = WordNetLemmatizer()

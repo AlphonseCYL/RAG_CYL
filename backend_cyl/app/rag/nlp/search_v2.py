@@ -16,13 +16,14 @@
 import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 
-from service.core.rag.settings import TAG_FLD, PAGERANK_FLD
-from service.core.rag.utils import rmSpace
-from service.core.rag.nlp import rag_tokenizer, query
+from app.rag.settings import TAG_FLD, PAGERANK_FLD
+from app.rag.utils import rmSpace
+from app.rag.nlp import rag_tokenizer, query
 import numpy as np
-from service.core.rag.utils.doc_store_conn import DocStoreConnection, MatchDenseExpr, FusionExpr, OrderByExpr
-from service.core.rag.nlp.model import generate_embedding, rerank_similarity
+from app.rag.utils.doc_store_conn import DocStoreConnection, MatchDenseExpr, FusionExpr, OrderByExpr
+from app.rag.nlp.model import generate_embedding, rerank_similarity
 
 def index_name(uid): return f"{uid}"
 
@@ -119,8 +120,15 @@ class Dealer:
                 matchText, _ = self.qryr.question(qst, min_match=0.1)
                 filters.pop("doc_ids", None)
                 matchDense.extra_options["similarity"] = 0.17
-                res = self.dataStore.search(src, highlightFields, filters, [matchText, matchDense, fusionExpr],
-                                            orderBy, offset, limit, idx_names, kb_ids, rank_feature=rank_feature)
+                res = self.dataStore.search(src, highlightFields, 
+                                            filters, 
+                                            [matchText, matchDense, fusionExpr],
+                                            orderBy, 
+                                            offset, 
+                                            limit, 
+                                            idx_names, 
+                                            kb_ids, 
+                                            rank_feature=rank_feature)
                 total = self.dataStore.getTotal(res)
                 logging.debug("Dealer.search 2 TOTAL: {}".format(total))
 
@@ -338,6 +346,7 @@ class Dealer:
 
         tksim = self.qryr.token_similarity(keywords, ins_tw)
         vtsim, _ = rerank_similarity(query, [rmSpace(" ".join(tks)) for tks in ins_tw])
+        vtsim = np.array(vtsim, dtype=float)
         ## For rank feature(tag_fea) scores.
         rank_fea = self._rank_feature_scores(rank_feature, sres)
 
@@ -358,13 +367,14 @@ class Dealer:
                   page, 
                   page_size, 
                   similarity_threshold=0.1,
-                  vector_similarity_weight=0.3, 
+                  vector_similarity_weight=0.3,
                   top=1024, 
                   doc_ids=None, 
                   aggs=True,
                   rerank_mdl=None, 
                   highlight=False,
-                  rank_feature: dict | None = {PAGERANK_FLD: 10}):
+                  rank_feature: dict | None = {PAGERANK_FLD: 10}
+                  ) -> dict[str, Any]:
         ranks = {"total": 0, "chunks": [], "doc_aggs": {}}
 
         RERANK_PAGE_LIMIT = 3
@@ -433,7 +443,7 @@ class Dealer:
                 "content_with_weight": chunk["content_with_weight"],
                 "doc_id": did,
                 "docnm_kwd": dnm,
-                "kb_id": chunk["kb_id"],
+                "kb_id": chunk.get("kb_id", ""),
                 "important_kwd": chunk.get("important_kwd", []),
                 "image_id": chunk.get("img_id", ""),
                 "similarity": sim[i],

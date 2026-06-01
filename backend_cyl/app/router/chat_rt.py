@@ -21,6 +21,7 @@ from app.features.sessions.service import (
 from app.rag.utils.file_utils import get_project_base_dir
 from app.features.file_parse.file_parse import execute_insert_file_to_es
 from app.features.file_parse.schemas import DocumentUploadResponse, SessionDocumentsResponse
+from app.features.retrieval.retrieval import retrieve_content
 
 
 router = APIRouter(tags=["chat"])
@@ -71,16 +72,46 @@ async def chat_on_docs(
     session_id: Annotated[str, Query()],
     request: Annotated[ChatRequest, Body()],
 ) -> StreamingResponse:
-    if not user_owns_session(current_user.id, session_id):
-        raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+    try:
+        if not user_owns_session(current_user.id, session_id):
+            raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+        
+        logger.info(f"开始处理用户 {str(current_user.id)} 的请求")
+        logger.info(f"问题内容: {request.message}")
 
-    return StreamingResponse(
-        get_chat_completion(session_id, str(current_user.id), request.message),
-        media_type="text/event-stream",
-    )
+        question = request.message
+        references = []
+
+        # 从知识库检索，可以不返回内容
+        references = []
+        try:
+            logger.info("开始从知识库检索相关内容...")
+            references = retrieve_content(str(current_user.id), question)
+            logger.info(f"检索到f{len(references)}个相关片段")
+        
 
 
-# 上传文档
+        except Exception as e:
+            logger.warning(f"Knowledge base retrieval failed, continue without references: {e}")
+
+        return StreamingResponse(
+            get_chat_completion(session_id, str(current_user.id), question, references),
+            media_type="text/event-stream",
+        )
+    except HTTPException as e:
+        logger.error(f"HTTP错误:{str(e)}")
+        raise e
+    except Exception as e:
+        logger.exception(f"发生未知错误:{str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+################################
+#   上传文档
+################################
 @router.post("/upload_files")
 async def upload_files(
     current_user: Annotated[UserInfo, Depends(get_current_user)],

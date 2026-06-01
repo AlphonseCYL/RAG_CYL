@@ -15,10 +15,10 @@
 #
 import os
 import logging
-from service.core.api.utils.file_utils import get_project_base_directory
+from app.rag.utils.file_utils import get_project_base_dir
 
 # Server
-RAG_CONF_PATH = os.path.join(get_project_base_directory(), "conf")
+RAG_CONF_PATH = os.path.join(get_project_base_dir(), "conf")
 
 ES = None
 
