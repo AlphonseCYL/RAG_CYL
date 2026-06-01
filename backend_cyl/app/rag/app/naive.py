@@ -38,6 +38,9 @@ def _read_text(filename: str, binary: bytes | None = None) -> str:
 
 
 def _simple_tokenize(text: str) -> str:
+    '''
+    找到中文、英文单词、数字、下划线、连字符、标点符号等，并用空格分隔开来，作为简单的分词结果
+    '''
     return " ".join(re.findall(r"[\u4e00-\u9fff]|[A-Za-z0-9_]+|[^\s]", text))
 
 
@@ -73,6 +76,9 @@ def _split_text(text: str, delimiter: str = DEFAULT_DELIMITER) -> list[str]:
 
 
 def _merge_sections(sections: list[str], chunk_token_num: int) -> list[str]:
+    '''
+    合并文本片段，使得每个片段的长度不超过chunk_token_num
+    '''
     chunks: list[str] = []
     current: list[str] = []
     current_tokens = 0
@@ -93,7 +99,20 @@ def _merge_sections(sections: list[str], chunk_token_num: int) -> list[str]:
 
 
 def _parse_pdf(filename: str, binary: bytes | None, from_page: int, to_page: int) -> list[str]:
+    '''
+    返回一个列表，列表中的元素是pdf文件中的每一页
+    示例：
+    [page 1]
+    这是第一页的内容
+    这是第二行
+    这是第三行
+    [page 2]
+    这是第二页的内容
+    这是第二行
+    这是第三行
+    '''
     source = BytesIO(binary) if binary is not None else filename
+
     sections: list[str] = []
 
     with pdfplumber.open(source) as pdf:
@@ -107,6 +126,17 @@ def _parse_pdf(filename: str, binary: bytes | None, from_page: int, to_page: int
 
 
 def _parse_docx(filename: str, binary: bytes | None) -> list[str]:
+    '''
+    返回一个列表，列表中的元素是docx文件中的每一段文本或表格行
+    示例：
+    [
+    string1: 这是第一段文本,
+    string2: 这是第二段文本,
+    string3: 这是第三段文本,
+    string4: 这是第一行表格内容1 | 这是第一行表格内容2,
+    string5: 这是第二行表格内容1 | 这是第二行表格内容2,
+    ]
+    '''
     document = Document(BytesIO(binary)) if binary is not None else Document(filename)
     sections = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
 
@@ -183,9 +213,10 @@ def chunk(
         raise NotImplementedError("Only pdf, docx, txt/code, and markdown files are supported.")
     callback(0.8, "Finish parsing file.")
 
+    # 拼凑sections为chunks，要求每个chunk的token数量不超过chunk_token_num
+    # 这里优化可以用滑动窗口，每次只处理一个chunk，然后根据当前chunk的token数量判断是否需要移动滑动窗口的起始位置
     chunks = _merge_sections(sections, chunk_token_num)
-    if kwargs.get("section_only", False):
-        return chunks
 
+    # 构建doc和chunk
     doc = _build_doc(filename)
     return [_build_chunk(doc, item) for item in chunks if item.strip()]

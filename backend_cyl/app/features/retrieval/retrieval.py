@@ -1,5 +1,5 @@
 
-from app.rag.utils.es_conn import ESConnection
+from app.core.es_conn import ESConnection
 from app.rag.nlp.search_v2 import Dealer
 
 es_connection = ESConnection()

@@ -346,8 +346,8 @@ class ESConnection():
                     query["query"]["bool"]["must"].append({"term": {field: value}})
             
             # 打印调试信息
-            print(f"ES 删除查询: {json.dumps(query, ensure_ascii=False, indent=2)}")
-            print(f"索引名: {indexName}")
+            logger.info(f"ES 删除查询: {json.dumps(query, ensure_ascii=False, indent=2)}")
+            logger.info(f"索引名: {indexName}")
             
             # 执行删除
             response = self.es.delete_by_query(
@@ -356,11 +356,11 @@ class ESConnection():
                 refresh=True
             )
             
-            print(f"ES 删除响应: {response}")
+            logger.info(f"ES 删除响应: {response}")
             
             return response["deleted"]
             
         except Exception as e:
             logger.error(f"Failed to delete documents: {str(e)}")
-            print(f"ES 删除失败: {str(e)}")
+            logger.error(f"ES 删除失败: {str(e)}")
             return 0

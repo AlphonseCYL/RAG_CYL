@@ -1,8 +1,14 @@
 .chat-page {
   padding: 28px 40px;
   margin: 0 auto;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 
   .chat-page__header {
+    flex-shrink: 0;
     text-align: center;
     font-weight: bold;
     font-size: 18px;
@@ -16,5 +22,12 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+  }
+
+  .chat-page__messages {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
   }
 }

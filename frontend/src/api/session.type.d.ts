@@ -25,6 +25,7 @@ declare namespace API {
     document_id: string
     document_name: string
     content_with_weight: string
+    source?: 'session' | 'es'
   }
 
   interface Reference {
@@ -33,5 +34,6 @@ declare namespace API {
     document_name: string
     content_with_weight: string
     positions: number[][]
+    source?: 'session' | 'es'
   }
 }

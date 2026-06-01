@@ -8,6 +8,7 @@ cd backend
 
 ## 启动后端服务
 docker compose up -d --build
+uvicorn main:app --reload --port 8001
 
 查看后端日志：docker logs -f swxy_api
 

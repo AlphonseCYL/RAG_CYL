@@ -1,5 +1,8 @@
 .base-layout {
   padding-left: 206px;
+  height: 100vh;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .base-layout__sidebar {
@@ -86,5 +89,7 @@
 }
 
 .base-layout__content {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }

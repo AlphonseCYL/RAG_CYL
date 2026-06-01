@@ -2,11 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import init_db
+from app.core.logger import setup_logging
 from app.router.chat_rt import router as chat_router
 from app.router.history_rt import router as history_router
 from app.router.user_rt import router as user_router
 
 
+setup_logging()
 app = FastAPI(title="swxy cyl minimal auth")
 
 app.add_middleware(

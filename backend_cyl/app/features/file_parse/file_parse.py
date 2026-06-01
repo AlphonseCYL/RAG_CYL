@@ -1,16 +1,24 @@
 from typing import List
 import datetime
 import xxhash
+import logging
 
 from app.features.file_parse.schemas import FileParsedMetadataES
 from app.rag.nlp.model import generate_embedding
 from app.rag.app.naive import chunk
-from app.rag.utils.es_conn import ESConnection
+from app.core.es_conn import ESConnection
+
+logger = logging.getLogger('file_parse')
 
 def dummy(*args, **kwargs):
     pass
 
-
+############################################
+#
+#   批量生成嵌入向量
+#   
+#
+############################################
 def batch_generate_embeddings(
         texts: List[str], 
         batch_size: int = 10
@@ -29,7 +37,7 @@ def batch_generate_embeddings(
         return embeddings
     except Exception as e:
         # 处理异常情况，例如日志记录或返回默认值
-        print(f"批量生成向量失败: {e}")
+        logger.error(f"批量生成向量失败: {e}")
         return []
 
 def process_items(doc_items: List[dict], 
@@ -104,7 +112,7 @@ def process_items(doc_items: List[dict],
             # 示例："人工智能技术报告.pdf"
         return results
     except Exception as e:
-        print(f"process_items error: {e}")
+        logger.error(f"process_items error: {e}")
         return []
 
     
@@ -119,17 +127,41 @@ def execute_insert_file_to_es(file_url: str, file_name: str, index_name: str) ->
     '''
     # 1. 解析文件内容，获取文本和元数据
     documents = chunk(file_url, callback=dummy)
-    # 2. 批量处理文档
+    '''
+    documents示例:
+[
+    {
+        "content_with_weight": "人工智能是一门新兴技术，在各个领域都有广泛应用。",
+        "content_ltks": ["人工智能", "是", "一门", "新兴", "技术"],
+        "content_sm_ltks": ["人工智能", "是", "一门", "新兴", "的", "技术"],
+        "docnm_kwd": ["人工智能"],
+        "title_tks": ["人工智能", "技术", "报告"],
+    },
+    ...
+]
+    '''
+    # 2. 批量处理文档，处理为插入ES的格式
     processed_docs = process_items(documents, file_name, index_name)
     processed_docs_dict = [item.model_dump() for item in processed_docs]
+    '''
+    processed_docs_dict示例：
+[
+    {
+        "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "content_ltks": ["人工智能", "是", "一门", "新兴", "技术"],
+        "content_sm_ltks": ["人工智能", "是", "一门", "新兴", "的", "技术"],
+        "content_with_weight": "人工智能是一门新兴技术，在各个领域都有广泛应用。",
+    }
+]
+    '''
     # 3. 批量插入ES
     try:
         es_connection = ESConnection()
         es_connection.insert(documents=processed_docs_dict, indexName=index_name)
-        print(f"Successfully inserted {len(processed_docs_dict)} documents into ES")
+        logger.info(f"Successfully inserted {len(processed_docs_dict)} documents into ES")
 
     except Exception as e:
-        print(f"Failed to insert documents into ES: {e}")
+        logger.info(f"Failed to insert documents into ES: {e}")
 
 
 # 测试代码

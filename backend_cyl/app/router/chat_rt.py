@@ -135,9 +135,9 @@ async def upload_files(
             os.makedirs(storage_dir)
 
         # 根据session_id创建会话专用目录，确保不同会话的文件隔离存储
-        session_dir = os.path.join(storage_dir, session_id)
-        if not os.path.exists(session_dir):
-            os.makedirs(session_dir)
+        user_dir = os.path.join(storage_dir, str(current_user.id))
+        if not os.path.exists(user_dir):
+            os.makedirs(user_dir)
 
         upload_filenames: list[str] = []# 用于记录本次上传的文件名，后续检查重复
         duplicate_filenames: set[str] = set()# 用于记录本次上传中与已存在文件名重复的文件
@@ -151,9 +151,9 @@ async def upload_files(
             seen_filenames.add(file_name)
             upload_filenames.append(file_name)
 
-        # 获取session_dir中的现有文件名
+        # 获取user_dir中的现有文件名
         existing_filenames = {
-            entry.name for entry in Path(session_dir).iterdir() if entry.is_file()
+            entry.name for entry in Path(user_dir).iterdir() if entry.is_file()
         }
         # 检查上传文件名与文件夹已存在文件名的重复情况，避免覆盖已存在的文件
         duplicate_filenames.update(
@@ -177,7 +177,7 @@ async def upload_files(
 
         for file in files:
             file_name = Path(file.filename or "").name
-            file_path = os.path.join(session_dir, file_name)
+            file_path = os.path.join(user_dir, file_name)
             try:
                 # 以二进制方式写入文件内容，确保文件内容不受编码问题影响
                 file_content = await file.read()
@@ -197,12 +197,12 @@ async def upload_files(
                     os.remove(file_path)  # 删除不匹配的文件
                 
                 # 保存文件url和Base64编码文件流
-                file_url = f"{storage_dir}/{session_id}/{file_name}"
+                file_url = f"{storage_dir}/{str(current_user.id)}/{file_name}"
 
                 # 解析和插入ES
                 try:
-                    execute_insert_file_to_es(file_url, file_name, session_id)
-                    print(f"数据插入es成功:{file_url}")
+                    execute_insert_file_to_es(file_url=file_url, file_name=file_name, index_name=user_id)
+                    print(f"数据插入es索引{user_id}成功:{file_url}")
 
                     insert_knowledgebase(str(current_user.id), session_id, file_url)
                     print((f"数据插入knowledgebase成功: {file_name}"))

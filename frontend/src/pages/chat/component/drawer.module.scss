@@ -30,6 +30,8 @@
   }
 
   .drawer__content {
+    flex: 1;
+    min-height: 0;
     padding: 12px 30px;
     overflow: auto;
   }

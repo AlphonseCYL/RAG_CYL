@@ -16,22 +16,41 @@ import ChatMessage from './component/chat-message'
 import Citations from './component/citations'
 import Contracts from './component/contracts'
 import ChatDrawer from './component/drawer'
-import Source from './component/source'
 import styles from './index.module.scss'
 import { createChatId, createChatIdText, transportToChatEnter } from './shared'
 
-async function scrollToBottom() {
+function isSessionReference(item: Pick<API.Reference, 'id' | 'document_id'>) {
+  return [item.id, item.document_id].some((value) =>
+    String(value ?? '').startsWith('quick_parse_'),
+  )
+}
+
+function normalizeReference(item: API.Reference): API.Reference {
+  return {
+    ...item,
+    source: isSessionReference(item) ? 'session' : 'es',
+  }
+}
+
+function referenceToDocument(item: API.Reference): API.Document {
+  return {
+    document_id: item.document_id,
+    document_name: item.document_name,
+    content_with_weight: item.content_with_weight,
+    source: item.source,
+  }
+}
+
+async function scrollToBottom(target?: HTMLElement | null) {
   await new Promise((resolve) => setTimeout(resolve))
+  if (!target) return
 
   const threshold = 200
-  const distanceToBottom =
-    document.documentElement.scrollHeight -
-    document.documentElement.scrollTop -
-    document.documentElement.clientHeight
+  const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight
 
   if (distanceToBottom <= threshold) {
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
+    target.scrollTo({
+      top: target.scrollHeight,
       behavior: 'smooth',
     })
   }
@@ -51,6 +70,7 @@ export default function Index() {
   const [currentChatItem, setCurrentChatItem] = useState<API.ChatItem | null>(
     null,
   )
+  const messagesRef = useRef<HTMLDivElement>(null)
 
   const history = useRequest(
     async () => {
@@ -79,7 +99,9 @@ export default function Index() {
 
             if (item.documents) {
               try {
-                reference = JSON.parse(item.documents) as API.Reference[]
+                reference = (JSON.parse(item.documents) as API.Reference[]).map(
+                  normalizeReference,
+                )
               } catch (error) {
                 console.error(error)
               }
@@ -96,11 +118,7 @@ export default function Index() {
             }
 
             reference?.forEach((chunk) => {
-              map.set(chunk.document_id, {
-                document_id: chunk.document_id,
-                document_name: chunk.document_name,
-                content_with_weight: chunk.content_with_weight,
-              })
+              map.set(chunk.document_id, referenceToDocument(chunk))
             })
             const documents = Array.from(map.values())
 
@@ -120,9 +138,7 @@ export default function Index() {
         })
 
         setTimeout(() => {
-          window.scrollTo({
-            top: document.documentElement.scrollHeight,
-          })
+          messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight })
         })
       },
     },
@@ -179,7 +195,7 @@ export default function Index() {
             //我们只需要data开头的数据，流式数据
             if (slice.startsWith('data: ')) {
               parseData(slice)
-              scrollToBottom()
+              scrollToBottom(messagesRef.current)
             }
           }
 
@@ -211,15 +227,14 @@ export default function Index() {
           }
 
           if (json?.documents?.length) {
-            target.reference = json.documents
+            const reference = (json.documents as API.Reference[]).map(
+              normalizeReference,
+            )
+            target.reference = reference
 
             const map = new Map<string, API.Document>()
-            json?.documents.forEach((chunk: API.Reference) => {
-              map.set(chunk.document_id, {
-                document_id: chunk.document_id,
-                document_name: chunk.document_name,
-                content_with_weight: chunk.content_with_weight,
-              })
+            reference.forEach((chunk) => {
+              map.set(chunk.document_id, referenceToDocument(chunk))
             })
             const documents = Array.from(map.values())
             target.documents = documents
@@ -275,7 +290,7 @@ export default function Index() {
           type: ChatType.Document,
           content: '',
         })
-        scrollToBottom()
+        scrollToBottom(messagesRef.current)
 
         const target = chat.list[chat.list.length - 1]
 
@@ -294,6 +309,9 @@ export default function Index() {
 
   useEffect(() => {
     const handleScroll = () => {
+      const scrollContainer = messagesRef.current
+      if (!scrollContainer) return
+
       const anchors: {
         id: string
         top: number
@@ -308,7 +326,7 @@ export default function Index() {
           if (!dom) return
 
           const top = dom.offsetTop
-          if (index === 0 || top < window.scrollY) {
+          if (index === 0 || top < scrollContainer.scrollTop) {
             anchors.push({ id, top, item })
           }
         })
@@ -322,10 +340,11 @@ export default function Index() {
       }
     }
 
-    window.addEventListener('scroll', handleScroll)
+    const scrollContainer = messagesRef.current
+    scrollContainer?.addEventListener('scroll', handleScroll)
 
     return () => {
-      window.removeEventListener('scroll', handleScroll)
+      scrollContainer?.removeEventListener('scroll', handleScroll)
     }
   }, [])
 
@@ -339,7 +358,6 @@ export default function Index() {
     <ComPageLayout
       sender={
         <>
-          {documents.length > 0 && <Source list={documents} />}
           <ComSender
             loading={loading}
             sessionId={id}
@@ -370,12 +388,13 @@ export default function Index() {
           </Button>
         </div>
 
-        <ChatMessage
-          list={list}
-          onSend={send}
-          onOpenCiations={setCurrentChatItem}
-          onRefrence={setRead}
-        />
+        <div ref={messagesRef} className={styles['chat-page__messages']}>
+          <ChatMessage
+            list={list}
+            onSend={send}
+            onRefrence={setRead}
+          />
+        </div>
 
         <Drawer
           title={read?.document_name ?? ''}

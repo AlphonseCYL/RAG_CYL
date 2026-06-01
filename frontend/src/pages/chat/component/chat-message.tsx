@@ -27,10 +27,9 @@ function AssistantMessage(props: {
   item: API.ChatItem
   isEnd?: boolean
   onSend?: (text: string) => void
-  onOpenCiations?: () => void
   onRefrence?: (index: number) => void
 }) {
-  const { item, isEnd, onSend, onOpenCiations, onRefrence } = props
+  const { item, isEnd, onSend, onRefrence } = props
 
   const id = useMemo(() => {
     if (item.type === ChatType.Document) {
@@ -58,14 +57,6 @@ function AssistantMessage(props: {
             case ChatType.Document:
               if (item.loading && !item.documents?.length) {
                 return <ChooseFile.Searching />
-              } else if (!item.error) {
-                return (
-                  <ChooseFile.Complete
-                    contractsLength={item.documents?.length ?? 0}
-                    citationsLength={item.reference?.length ?? 0}
-                    onClick={onOpenCiations}
-                  />
-                )
               }
           }
         })()}
@@ -84,10 +75,9 @@ function AssistantMessage(props: {
 export default function ChatMessage(props: {
   list: API.ChatItem[]
   onSend?: (text: string) => void
-  onOpenCiations?: (item: API.ChatItem) => void
   onRefrence?: (target: API.Reference) => void
 }) {
-  const { list, onSend, onOpenCiations, onRefrence } = props
+  const { list, onSend, onRefrence } = props
 
   return (
     <div className={styles['chat-message']}>
@@ -102,7 +92,6 @@ export default function ChatMessage(props: {
             item={item}
             isEnd={list.length - 1 === index}
             onSend={onSend}
-            onOpenCiations={() => onOpenCiations?.(item)}
             onRefrence={(index) => {
               const target = item.reference?.[index]
               if (target) onRefrence?.(target)

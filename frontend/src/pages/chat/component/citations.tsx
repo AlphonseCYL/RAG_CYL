@@ -19,9 +19,10 @@ function CitationsItem(props: {
     dom.innerHTML = item.content_with_weight
     return dom.innerText
   }, [item.content_with_weight])
+  const isEs = item.source === 'es'
 
   return (
-    <div className={styles['citations__item']}>
+    <div className={isEs ? styles['citations__item--es'] : styles['citations__item']}>
       <div className={styles['actions']}>
         <Tooltip
           classNames={{
@@ -39,7 +40,7 @@ function CitationsItem(props: {
         <div className={styles['name']} title={item.document_name}>
           {item.document_name}
         </div>
-        <div className={styles['score']}>{index + 1}</div>
+        <div className={styles['score']}>{isEs ? 'ES' : index + 1}</div>
       </div>
 
       <div className={styles['desc']}>{content}</div>
@@ -65,6 +66,18 @@ export default function Citations(props: { list?: API.Reference[] }) {
   const { list } = props
 
   const [read, setRead] = useState<API.Reference | null>(null)
+  const displayList = useMemo(() => {
+    let hasSessionDocument = false
+
+    return (
+      list?.filter((item) => {
+        if (item.source !== 'session') return true
+        if (hasSessionDocument) return false
+        hasSessionDocument = true
+        return true
+      }) ?? []
+    )
+  }, [list])
 
   return (
     <div className={styles['citations']}>
@@ -83,7 +96,7 @@ export default function Citations(props: { list?: API.Reference[] }) {
       <div className={styles['citations__title']}>Selected citations</div>
 
       <div className={styles['citations__list']}>
-        {list?.map((item, index) => (
+        {displayList.map((item, index) => (
           <CitationsItem
             key={item.id}
             item={item}
