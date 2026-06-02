@@ -1,4 +1,58 @@
 services:
+  app:
+    container_name: app_backend_cyl
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE_NAME: ${MYSQL_DATABASE_NAME:-RAG_system}
+      MYSQL_USER: ${MYSQL_USER:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-0000}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: ${REDIS_DB:-0}
+      ES_HOST: http://es:9200
+      ES_HOSTS: http://es:9200
+    ports:
+      - "8001:8001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      es:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend_rag_network
+
+  mysql:
+    container_name: backend_cyl_mysql
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-0000}
+      MYSQL_DATABASE: ${MYSQL_DATABASE_NAME:-RAG_system}
+      TZ: ${TIMEZONE:-Asia/Shanghai}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - backend_rag_network
+
   redis:
     container_name: backend_cyl_redis
     image: redis:7-alpine
@@ -52,6 +106,8 @@ services:
       - backend_rag_network
 
 volumes:
+  mysql_data:
+    driver: local
   redis_data:
     driver: local
   es_knowledge_data_01:
