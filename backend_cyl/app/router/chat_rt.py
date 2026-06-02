@@ -86,7 +86,7 @@ async def chat_on_docs(
         references = []
         try:
             logger.info("开始从知识库检索相关内容...")
-            references = retrieve_content(str(current_user.id), question)
+            references = retrieve_content(index_name = str(current_user.id), user_question=question)
             logger.info(f"检索到f{len(references)}个相关片段")
         
 
@@ -203,14 +203,17 @@ async def upload_files(
                 try:
                     execute_insert_file_to_es(file_url=file_url, file_name=file_name, index_name=user_id)
                     print(f"数据插入es索引{user_id}成功:{file_url}")
+                    logger.info(f"数据插入es索引{user_id}成功:{file_url}")
 
                     insert_knowledgebase(str(current_user.id), session_id, file_url)
                     print((f"数据插入knowledgebase成功: {file_name}"))
+                    logger.info(f"数据插入knowledgebase成功: {file_name}")
 
                     successfully_uploaded_files.append(file_name)
 
                 except Exception as parse_and_insert_error:
                     print((f"文件解析失败 {file_name}: {str(parse_and_insert_error)}"))
+                    logger.error(f"文件解析失败 {file_name}: {str(parse_and_insert_error)}")
                     failed_uploaded_files.append(f"{file_name}: 文件解析失败 - {str(parse_and_insert_error)}")
                     # 删除已保存的文件
                     if os.path.exists(file_path):
@@ -218,7 +221,8 @@ async def upload_files(
                     continue
             
             except Exception as exc:
-                failed_uploaded_files.append(f"{file_name}: 处理失败 - {str(e)}")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+                logger.error(f"处理文件失败 {file_name}: {str(exc)}")
+                failed_uploaded_files.append(f"{file_name}: 处理失败 - {str(exc)}")
 
         # 构建返回结果
         if successfully_uploaded_files and not failed_uploaded_files:

@@ -6,17 +6,20 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import (
-    MYSQL_CHARSET,
-    MYSQL_COLLATION,
-    MYSQL_DATABASE_NAME,
-    MYSQL_HOST,
-    MYSQL_PASSWORD,
-    MYSQL_PORT,
-    MYSQL_USER,
-)
 from app.db_models import Base
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # 加载 .env 文件中的环境变量
+
+MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+MYSQL_PORT = os.getenv("MYSQL_PORT", "3306")
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "0000")
+MYSQL_DATABASE_NAME = os.getenv("MYSQL_DATABASE_NAME", "cyl_db")
+MYSQL_CHARSET = os.getenv("MYSQL_CHARSET", "utf8mb4")
+MYSQL_COLLATION = os.getenv("MYSQL_COLLATION", "utf8mb4_general_ci")
 
 _user = quote_plus(MYSQL_USER)
 _password = quote_plus(MYSQL_PASSWORD)

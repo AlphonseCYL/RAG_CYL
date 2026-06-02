@@ -1,10 +1,14 @@
 import json
+import os
 
 import redis
 from fastapi import HTTPException
 
-from app.core.config import QUICK_PARSE_EXPIRE_SECONDS, REDIS_DB, REDIS_HOST, REDIS_PORT
 
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+QUICK_PARSE_EXPIRE_SECONDS = int(os.getenv("QUICK_PARSE_EXPIRE_SECONDS", "3600"))
 
 redis_client = redis.Redis(
     host=REDIS_HOST,

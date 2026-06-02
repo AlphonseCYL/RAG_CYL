@@ -5,7 +5,6 @@ from docx import Document
 from fastapi import HTTPException
 import pdfplumber
 
-from app.core.config import QUICK_PARSE_EXPIRE_SECONDS
 from app.core.database import SessionLocal
 from app.features.sessions.redis_store import (
     get_quick_parsed_doc_ttl,

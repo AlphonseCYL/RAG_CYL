@@ -7,12 +7,11 @@ from typing import Annotated
 from fastapi import Header, HTTPException, status
 from jose import JWTError, jwt
 
-from app.core.config import (
-    ACCESS_TOKEN_EXPIRE_HOURS,
-    JWT_ALGORITHM,
-    JWT_SECRET_KEY,
-)
 from app.features.auth.schemas import UserInfo
+
+ACCESS_TOKEN_EXPIRE_HOURS = os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 24)
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your_secret_key")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 # 生成随机 salt，再根据输入密码生成 hash，输出格式为 salt$hash。
 def hash_password(password: str) -> str:
@@ -33,7 +32,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(user_id: int, username: str) -> str:
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=float(ACCESS_TOKEN_EXPIRE_HOURS))
     payload = {"sub": str(user_id), "username": username, "exp": expires_at}
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 

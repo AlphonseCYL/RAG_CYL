@@ -7,7 +7,7 @@ body {
   font-family:
     Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   color: #202124;
-  background: #eef2f6;
+  background: #f4f6f9;
 }
 
 .page {
@@ -40,14 +40,20 @@ body {
 
 .app-shell {
   min-height: 100vh;
-  background: #eef2f6;
+  background: #f4f6f9;
 }
 
 .app-sidebar {
+  position: fixed !important;
+  inset: 0 auto 0 0;
+  z-index: 20;
   min-height: 100vh;
+  max-height: 100vh;
   padding: 22px 16px;
   background: #ffffff !important;
   border-right: 1px solid #e6ebf1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .brand {
@@ -65,12 +71,30 @@ body {
   place-items: center;
   color: #ffffff;
   font-weight: 700;
-  background: #2f6fed;
+  background: #126d67;
 }
 
 .brand-title {
   font-size: 16px;
   font-weight: 700;
+}
+
+.brand-title {
+  font-size: 0;
+}
+
+.brand-title::after {
+  content: "智能论文助手";
+  font-size: 16px;
+}
+
+.brand-subtitle {
+  font-size: 0;
+}
+
+.brand-subtitle::after {
+  content: "论文阅读 · 检索 · 写作";
+  font-size: 12px;
 }
 
 .brand-subtitle {
@@ -87,12 +111,21 @@ body {
   border-inline-end: none !important;
 }
 
+.app-sidebar .ant-menu-item-selected {
+  color: #126d67;
+  background: #e6f4f1 !important;
+}
+
 .app-main {
   min-width: 0;
+  margin-left: 232px;
   background: transparent;
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   min-height: 88px;
   display: flex;
   align-items: center;
@@ -207,7 +240,7 @@ body {
 .user-message {
   align-self: flex-end;
   color: #ffffff;
-  background: #2f6fed;
+  background: #126d67;
 }
 
 .message-role {
@@ -308,8 +341,8 @@ body {
   place-items: center;
   margin: 0 auto 12px;
   border-radius: 8px;
-  color: #2f6fed;
-  background: #eaf1ff;
+  color: #126d67;
+  background: #e6f4f1;
   font-size: 28px;
   line-height: 1;
 }
@@ -324,6 +357,20 @@ body {
 }
 
 @media (max-width: 768px) {
+  .app-sidebar {
+    position: sticky !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid #e6ebf1;
+  }
+
+  .app-main {
+    margin-left: 0;
+  }
+
   .topbar {
     align-items: flex-start;
     flex-direction: column;

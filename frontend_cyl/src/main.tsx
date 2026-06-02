@@ -331,8 +331,8 @@ function App() {
         <div className="login-brand">
           <div className="brand-mark">文</div>
           <div>
-            <Typography.Title level={2}>智能文档问答系统</Typography.Title>
-            <Typography.Text type="secondary">复现主项目的登录、会话与文档问答流程</Typography.Text>
+            <Typography.Title level={2}>智能论文助手</Typography.Title>
+            <Typography.Text type="secondary">面向论文阅读、资料检索与问答整理的研究工作台</Typography.Text>
           </div>
         </div>
         <Tabs
@@ -457,12 +457,12 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
 
   return (
     <Layout className="app-shell">
-      <Layout.Sider width={232} className="app-sidebar" breakpoint="lg" collapsedWidth={0}>
+      <Layout.Sider width={232} className="app-sidebar">
         <div className="brand">
           <div className="brand-mark">文</div>
           <div>
-            <div className="brand-title">智能文档问答</div>
-            <div className="brand-subtitle">frontend_cyl</div>
+            <div className="brand-title">智能论文助手</div>
+            <div className="brand-subtitle">论文阅读 · 检索 · 写作</div>
           </div>
         </div>
 
@@ -481,9 +481,9 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           selectedKeys={[activeKey]}
           onClick={(item) => setActiveKey(item.key)}
           items={[
-            { key: 'chat', label: '对话工作台' },
-            { key: 'repository', label: '文档上传' },
-            { key: 'history', label: '历史会话' },
+            { key: 'chat', label: '论文问答' },
+            { key: 'repository', label: '论文资料库' },
+            { key: 'history', label: '研究记录' },
           ]}
         />
       </Layout.Sider>
@@ -493,7 +493,7 @@ function AuthedApp(props: { token: string; username: string; onLogout: () => voi
           <div>
             <Typography.Title level={3}>欢迎回来，{props.username}</Typography.Title>
             <Typography.Text type="secondary">
-              当前前端只调用 backend_cyl 已有路由，适合逐步验证复现进度。
+              当前前端聚焦论文资料上传、会话问答和历史研究记录。
             </Typography.Text>
           </div>
           <Space>
@@ -767,9 +767,9 @@ function ChatHome(props: {
     return (
       <section className="empty-chat">
         <Tag color="blue">会话入口</Tag>
-        <Typography.Title level={2}>点击左侧“新建对话”开始</Typography.Title>
+        <Typography.Title level={2}>点击左侧“新建对话”开始论文研究</Typography.Title>
         <Typography.Paragraph type="secondary">
-          新建成功后会生成 session_id，并进入对应聊天窗口。
+          新建成功后会生成 session_id，可以上传临时论文或直接提问。
         </Typography.Paragraph>
       </section>
     )
@@ -799,7 +799,7 @@ function ChatHome(props: {
             <div className="message assistant-message">
               {loadingHistory
                 ? '正在加载该会话的历史对话...'
-                : '新会话窗口已创建。现在可以发送问题，前端会读取 '}
+                : '新论文研究窗口已创建。现在可以围绕摘要、方法、实验或结论提问，前端会读取 '}
               {!loadingHistory && <Typography.Text code>/chat_on_docs</Typography.Text>}
               {!loadingHistory && ' 的 SSE 流式响应。'}
             </div>
@@ -847,13 +847,13 @@ function ChatHome(props: {
               disabled={!selectedFile || parsing || sending}
               onClick={parseCurrentDocument}
             >
-              快速解析
+              解析论文
             </Button>
           </div>
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 6 }}
             value={input}
-            placeholder="输入问题，按发送后会通过 SSE 流式显示回答。"
+            placeholder="输入论文问题，例如：概括研究贡献、解释实验设置、提炼创新点。"
             onChange={(event) => setInput(event.target.value)}
             onPressEnter={(event) => {
               if (!event.shiftKey) {
@@ -868,9 +868,9 @@ function ChatHome(props: {
         </div>
       </div>
         <aside className="reference-panel">
-          <Typography.Title level={4}>回答依据</Typography.Title>
+          <Typography.Title level={4}>论文依据</Typography.Title>
           <Typography.Text type="secondary">
-            SSE 返回的引用文档和推荐追问会在这里同步展示。
+            引用文档和推荐追问会在这里同步展示，便于回到原文核对。
           </Typography.Text>
           <Divider />
           {latestAssistant?.documentNames?.length ? (
@@ -887,7 +887,7 @@ function ChatHome(props: {
           {latestAssistant?.recommendedQuestions?.length ? (
             <>
               <Divider />
-              <Typography.Title level={5}>推荐追问</Typography.Title>
+              <Typography.Title level={5}>继续研读</Typography.Title>
               <Space size={[8, 8]} wrap>
                 {latestAssistant.recommendedQuestions.map((question) => (
                   <Tag key={question} color="blue" onClick={() => setInput(question)}>
@@ -949,9 +949,9 @@ function RepositoryHome(props: {
     <section className="repository-page">
       <div className="repository-hero">
         <div>
-          <Typography.Title level={2}>文档上传</Typography.Title>
+          <Typography.Title level={2}>论文资料库</Typography.Title>
           <Typography.Text type="secondary">
-            对齐主项目知识库入口，当前接入 backend_cyl 的 POST /upload_files。
+            上传论文、综述或阅读材料，交给后端解析并进入可检索的知识库。
           </Typography.Text>
         </div>
         {props.session ? (
@@ -965,7 +965,7 @@ function RepositoryHome(props: {
 
       <div className="upload-grid">
         <div className="upload-panel">
-          <Typography.Title level={4}>添加文档</Typography.Title>
+          <Typography.Title level={4}>添加论文资料</Typography.Title>
           <Upload.Dragger
             multiple
             fileList={fileList}
@@ -974,7 +974,7 @@ function RepositoryHome(props: {
             disabled={uploading || !props.session}
           >
             <div className="upload-icon">+</div>
-            <Typography.Text>拖拽文件到这里，或点击选择</Typography.Text>
+            <Typography.Text>拖拽论文文件到这里，或点击选择</Typography.Text>
             <Typography.Paragraph type="secondary">
               文件会携带当前 session_id 上传，后端负责保存、解析并写入 ES。
             </Typography.Paragraph>
@@ -987,12 +987,12 @@ function RepositoryHome(props: {
             disabled={!props.session || fileList.length === 0}
             onClick={submitUpload}
           >
-            开始上传解析
+            上传并解析论文
           </Button>
         </div>
 
         <div className="upload-panel">
-          <Typography.Title level={4}>上传状态</Typography.Title>
+          <Typography.Title level={4}>解析状态</Typography.Title>
           {!props.session && (
             <Alert
               type="info"
@@ -1043,7 +1043,7 @@ function HistoryHome(props: {
 }) {
   return (
     <section className="simple-panel">
-      <Typography.Title level={3}>历史会话</Typography.Title>
+      <Typography.Title level={3}>研究记录</Typography.Title>
       <List
         loading={props.loading}
         locale={{ emptyText: '还没有会话，先点“新建对话”。' }}
