@@ -14,6 +14,7 @@ import {
   Menu,
   Popconfirm,
   Progress,
+  Select,
   Space,
   Tabs,
   Tag,
@@ -113,6 +114,27 @@ type UploadFilesResponse = {
   failed_files?: string[]
   duplicate_files?: string[]
   total_files?: number
+}
+
+type KnowledgeBaseItem = {
+  knowledge_id: string
+  user_id: string
+  knowledgebase_name: string
+  knowledgebase_dir: string
+  file_count: number
+  created_at: string
+  updated_at: string
+}
+
+type KnowledgeBaseListResponse = {
+  knowledgebases: KnowledgeBaseItem[]
+  status: string
+  message: string
+}
+
+type CreateKnowledgeBaseResponse = KnowledgeBaseItem & {
+  status: string
+  message: string
 }
 
 function createLocalId() {
@@ -230,9 +252,11 @@ async function request<T>(
 async function uploadKnowledgeFiles(params: {
   token: string
   sessionId: string
+  knowledgeId: string
   files: File[]
 }): Promise<UploadFilesResponse> {
   const formData = new FormData()
+  formData.append('knowledge_id', params.knowledgeId)
   params.files.forEach((file) => {
     formData.append('files', file)
   })
@@ -254,6 +278,25 @@ async function uploadKnowledgeFiles(params: {
   }
 
   return data
+}
+
+async function createKnowledgeBase(params: {
+  token: string
+  name: string
+}): Promise<CreateKnowledgeBaseResponse> {
+  return request<CreateKnowledgeBaseResponse>(
+    '/insert_knowledgebase',
+    {
+      method: 'POST',
+      body: JSON.stringify({ knowledgebase_name: params.name }),
+    },
+    params.token,
+  )
+}
+
+async function loadKnowledgeBases(token: string): Promise<KnowledgeBaseItem[]> {
+  const data = await request<KnowledgeBaseListResponse>('/knowledgebases', {}, token)
+  return data.knowledgebases
 }
 
 function App() {
@@ -908,13 +951,67 @@ function RepositoryHome(props: {
   token: string
   onCreateSession: () => Promise<void>
 }) {
+  const [knowledgeForm] = Form.useForm<{ name: string }>()
+  const [knowledgebases, setKnowledgebases] = useState<KnowledgeBaseItem[]>([])
+  const [selectedKnowledgeId, setSelectedKnowledgeId] = useState('')
+  const [creatingKnowledgebase, setCreatingKnowledgebase] = useState(false)
+  const [loadingKnowledgebases, setLoadingKnowledgebases] = useState(false)
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [uploading, setUploading] = useState(false)
   const [lastResult, setLastResult] = useState<UploadFilesResponse | null>(null)
 
+  const selectedKnowledgebase = useMemo(
+    () => knowledgebases.find((item) => item.knowledge_id === selectedKnowledgeId),
+    [knowledgebases, selectedKnowledgeId],
+  )
+
+  async function refreshKnowledgebases(nextSelectedId?: string) {
+    setLoadingKnowledgebases(true)
+    try {
+      const items = await loadKnowledgeBases(props.token)
+      setKnowledgebases(items)
+      setSelectedKnowledgeId((current) => nextSelectedId || current || items[0]?.knowledge_id || '')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载知识库失败')
+    } finally {
+      setLoadingKnowledgebases(false)
+    }
+  }
+
+  useEffect(() => {
+    refreshKnowledgebases()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.token])
+
+  async function submitKnowledgebase(values: { name: string }) {
+    const name = values.name.trim()
+    if (!name) {
+      message.warning('请输入知识库名称')
+      return
+    }
+
+    setCreatingKnowledgebase(true)
+    message.destroy()
+    try {
+      const result = await createKnowledgeBase({ token: props.token, name })
+      knowledgeForm.resetFields()
+      await refreshKnowledgebases(result.knowledge_id)
+      message.success(result.message || '知识库创建成功')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '创建知识库失败')
+    } finally {
+      setCreatingKnowledgebase(false)
+    }
+  }
+
   async function submitUpload() {
     if (!props.session) {
       message.warning('请先新建或打开一个会话')
+      return
+    }
+
+    if (!selectedKnowledgeId) {
+      message.warning('请先新建或选择知识库')
       return
     }
 
@@ -933,10 +1030,12 @@ function RepositoryHome(props: {
       const result = await uploadKnowledgeFiles({
         token: props.token,
         sessionId: props.session.id,
+        knowledgeId: selectedKnowledgeId,
         files,
       })
       setLastResult(result)
       setFileList([])
+      await refreshKnowledgebases(selectedKnowledgeId)
       message.success(result.message || '上传完成')
     } catch (error) {
       message.error(error instanceof Error ? error.message : '上传失败')
@@ -955,7 +1054,12 @@ function RepositoryHome(props: {
           </Typography.Text>
         </div>
         {props.session ? (
-          <Tag color="green">上传到 {props.session.title}</Tag>
+          <Space wrap>
+            <Tag color="green">会话：{props.session.title}</Tag>
+            {selectedKnowledgebase && (
+              <Tag color="cyan">知识库：{selectedKnowledgebase.knowledgebase_name}</Tag>
+            )}
+          </Space>
         ) : (
           <Button type="primary" onClick={props.onCreateSession}>
             新建会话
@@ -965,18 +1069,52 @@ function RepositoryHome(props: {
 
       <div className="upload-grid">
         <div className="upload-panel">
+          <Typography.Title level={4}>当前用户知识库</Typography.Title>
+          <Form
+            form={knowledgeForm}
+            layout="inline"
+            className="knowledge-form"
+            onFinish={submitKnowledgebase}
+          >
+            <Form.Item
+              name="name"
+              rules={[{ required: true, message: '请输入知识库名称' }]}
+            >
+              <Input placeholder="自定义知识库名称" disabled={creatingKnowledgebase} />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" loading={creatingKnowledgebase}>
+              新建知识库
+            </Button>
+          </Form>
+          <Select
+            className="knowledge-select"
+            loading={loadingKnowledgebases}
+            value={selectedKnowledgeId || undefined}
+            placeholder="选择一个知识库后上传"
+            onChange={setSelectedKnowledgeId}
+            options={knowledgebases.map((item) => ({
+              value: item.knowledge_id,
+              label: `${item.knowledgebase_name} (${item.file_count} 个文件)`,
+            }))}
+          />
+          {selectedKnowledgebase && (
+            <Typography.Paragraph className="knowledge-path" type="secondary">
+              保存目录：{selectedKnowledgebase.knowledgebase_dir}
+            </Typography.Paragraph>
+          )}
+          <Divider />
           <Typography.Title level={4}>添加论文资料</Typography.Title>
           <Upload.Dragger
             multiple
             fileList={fileList}
             beforeUpload={() => false}
             onChange={({ fileList: nextList }) => setFileList(nextList)}
-            disabled={uploading || !props.session}
+            disabled={uploading || !props.session || !selectedKnowledgeId}
           >
             <div className="upload-icon">+</div>
             <Typography.Text>拖拽论文文件到这里，或点击选择</Typography.Text>
             <Typography.Paragraph type="secondary">
-              文件会携带当前 session_id 上传，后端负责保存、解析并写入 ES。
+              文件会上传到所选知识库，后端保存到 storage/user_id/knowledge_id 并写入对应 ES 索引。
             </Typography.Paragraph>
           </Upload.Dragger>
           <Button
@@ -984,7 +1122,7 @@ function RepositoryHome(props: {
             block
             className="upload-submit"
             loading={uploading}
-            disabled={!props.session || fileList.length === 0}
+            disabled={!props.session || !selectedKnowledgeId || fileList.length === 0}
             onClick={submitUpload}
           >
             上传并解析论文
@@ -999,6 +1137,30 @@ function RepositoryHome(props: {
               showIcon
               message="需要先创建会话"
               description="backend_cyl 的 /upload_files 目前要求 session_id，并校验会话归属。"
+            />
+          )}
+          {props.session && !knowledgebases.length && !loadingKnowledgebases && (
+            <Alert
+              type="info"
+              showIcon
+              message="还没有知识库"
+              description="先创建一个当前用户知识库，再选择它进行离线上传。"
+            />
+          )}
+          {selectedKnowledgebase && (
+            <List
+              size="small"
+              className="knowledge-list"
+              header="当前可选知识库"
+              dataSource={knowledgebases}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    title={item.knowledgebase_name}
+                    description={`${item.knowledge_id} · ${item.file_count} 个文件`}
+                  />
+                </List.Item>
+              )}
             />
           )}
           {uploading && <Progress percent={60} status="active" showInfo={false} />}

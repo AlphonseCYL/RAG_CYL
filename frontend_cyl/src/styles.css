@@ -334,6 +334,30 @@ body {
   background: #fbfcfe;
 }
 
+.knowledge-form {
+  row-gap: 10px;
+  margin-bottom: 12px;
+}
+
+.knowledge-form .ant-form-item {
+  flex: 1 1 220px;
+  margin-inline-end: 8px;
+}
+
+.knowledge-select {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.knowledge-path {
+  margin-bottom: 0;
+  word-break: break-all;
+}
+
+.knowledge-list {
+  margin-bottom: 16px;
+}
+
 .upload-icon {
   width: 40px;
   height: 40px;

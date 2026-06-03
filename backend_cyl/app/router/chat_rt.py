@@ -3,12 +3,18 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from app.core.database import get_db, insert_knowledgebase
+from app.core.database import (
+    create_knowledgebase_record,
+    get_db,
+    get_user_knowledgebase,
+    insert_knowledgebase_file,
+    knowledgebase_file_exists,
+    list_user_knowledgebases,
+)
 from app.features.auth.security import get_current_user
 from app.features.auth.schemas import UserInfo
 from app.features.sessions.quick_parse_service import quick_parse_service
@@ -17,6 +23,12 @@ from app.features.sessions.service import (
     create_session,
     get_chat_completion,
     user_owns_session,
+)
+from app.features.knowledgebase.schemas import (
+    CreateKnowledgeBaseRequest,
+    CreateKnowledgeBaseResponse,
+    KnowledgeBaseItem,
+    KnowledgeBaseListResponse,
 )
 from app.rag.utils.file_utils import get_project_base_dir
 from app.features.file_parse.file_parse import execute_insert_file_to_es
@@ -28,6 +40,7 @@ router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)
 
 
+##################创建会话接口##################
 @router.post("/create_session", response_model=SessionResponse)
 def create_chat_session(
     current_user: Annotated[UserInfo, Depends(get_current_user)],
@@ -54,6 +67,44 @@ async def quick_parse_current_session_document(
         file_content,
         filename,
     )
+
+
+############### 创建知识库接口###############
+@router.post("/insert_knowledgebase")
+def create_knowledgebase(
+    current_user: Annotated[UserInfo, Depends(get_current_user)],
+    request: Annotated[CreateKnowledgeBaseRequest, Body()],
+) -> CreateKnowledgeBaseResponse:
+    knowledgebase_name = request.knowledgebase_name.strip()
+    if not knowledgebase_name:
+        raise HTTPException(status_code=400, detail="知识库名称不能为空")
+
+    knowledgebase = create_knowledgebase_record(
+        user_id=current_user.id,
+        knowledgebase_name=knowledgebase_name,
+        knowledgebase_dir=get_project_base_dir("storage"),
+    )
+    os.makedirs(knowledgebase.knowledgebase_dir, exist_ok=True)
+
+    return CreateKnowledgeBaseResponse(
+        knowledge_id=knowledgebase.knowledge_id,
+        user_id=str(current_user.id),
+        knowledgebase_name=knowledgebase.knowledgebase_name,
+        knowledgebase_dir=knowledgebase.knowledgebase_dir,
+        status="success",
+        message=f"知识库 {knowledgebase.knowledgebase_name} 创建成功",
+    )
+
+
+@router.get("/knowledgebases", response_model=KnowledgeBaseListResponse)
+def list_knowledgebase(
+    current_user: Annotated[UserInfo, Depends(get_current_user)],
+) -> KnowledgeBaseListResponse:
+    items = [
+        KnowledgeBaseItem(**item)
+        for item in list_user_knowledgebases(current_user.id)
+    ]
+    return KnowledgeBaseListResponse(knowledgebases=items)
 
 # 从redis获取解析后的内容，避免重复解析同一文档
 @router.get("/get_parsed_content")
@@ -86,7 +137,12 @@ async def chat_on_docs(
         references = []
         try:
             logger.info("开始从知识库检索相关内容...")
-            references = retrieve_content(index_name = str(current_user.id), user_question=question)
+            knowledge_ids = [
+                item["knowledge_id"]
+                for item in list_user_knowledgebases(current_user.id)
+            ]
+            if knowledge_ids:
+                references = retrieve_content(index_name=knowledge_ids, user_question=question)
             logger.info(f"检索到f{len(references)}个相关片段")
         
 
@@ -118,6 +174,7 @@ async def upload_files(
     files: Annotated[list[UploadFile], File()],
     db: Annotated[DbSession, Depends(get_db)],
     session_id: Annotated[str, Query()],
+    knowledge_id: Annotated[str, Form()],
 ):
     try:
         # 确保当前用户已认证
@@ -129,15 +186,14 @@ async def upload_files(
         if not user_owns_session(current_user.id, session_id):
             raise HTTPException(status_code=404, detail="会话不存在或无权访问")
 
-        # 确保storage/file存在
-        storage_dir = get_project_base_dir("storage", "file")
-        if not os.path.exists(storage_dir):
-            os.makedirs(storage_dir)
+        knowledgebase = get_user_knowledgebase(current_user.id, knowledge_id)
+        if knowledgebase is None:
+            raise HTTPException(status_code=404, detail="知识库不存在或无权访问")
 
-        # 根据session_id创建会话专用目录，确保不同会话的文件隔离存储
-        user_dir = os.path.join(storage_dir, str(current_user.id))
-        if not os.path.exists(user_dir):
-            os.makedirs(user_dir)
+        # 保存路径为 storage/{user_id}/{knowledge_id}
+        knowledge_dir = knowledgebase.knowledgebase_dir
+        if not os.path.exists(knowledge_dir):
+            os.makedirs(knowledge_dir)
 
         upload_filenames: list[str] = []# 用于记录本次上传的文件名，后续检查重复
         duplicate_filenames: set[str] = set()# 用于记录本次上传中与已存在文件名重复的文件
@@ -151,13 +207,16 @@ async def upload_files(
             seen_filenames.add(file_name)
             upload_filenames.append(file_name)
 
-        # 获取user_dir中的现有文件名
+        # 获取知识库目录中的现有文件名
         existing_filenames = {
-            entry.name for entry in Path(user_dir).iterdir() if entry.is_file()
+            entry.name for entry in Path(knowledge_dir).iterdir() if entry.is_file()
         }
         # 检查上传文件名与文件夹已存在文件名的重复情况，避免覆盖已存在的文件
         duplicate_filenames.update(
-            filename for filename in upload_filenames if filename in existing_filenames
+            filename
+            for filename in upload_filenames
+            if filename in existing_filenames
+            or knowledgebase_file_exists(current_user.id, knowledge_id, filename)
         )
 
         # 如果有重复文件名，拒绝上传并返回错误提示，要求用户修改文件名后重新上传
@@ -177,7 +236,7 @@ async def upload_files(
 
         for file in files:
             file_name = Path(file.filename or "").name
-            file_path = os.path.join(user_dir, file_name)
+            file_path = os.path.join(knowledge_dir, file_name)
             try:
                 # 以二进制方式写入文件内容，确保文件内容不受编码问题影响
                 file_content = await file.read()
@@ -196,16 +255,21 @@ async def upload_files(
                     failed_uploaded_files.append(f"{file_name}: 文件保存失败，内容不匹配")
                     os.remove(file_path)  # 删除不匹配的文件
                 
-                # 保存文件url和Base64编码文件流
-                file_url = f"{storage_dir}/{str(current_user.id)}/{file_name}"
+                file_url = file_path
 
                 # 解析和插入ES
                 try:
-                    execute_insert_file_to_es(file_url=file_url, file_name=file_name, index_name=user_id)
-                    print(f"数据插入es索引{user_id}成功:{file_url}")
-                    logger.info(f"数据插入es索引{user_id}成功:{file_url}")
+                    execute_insert_file_to_es(file_url=file_url, file_name=file_name, index_name=knowledge_id)
+                    print(f"数据插入es索引{knowledge_id}成功:{file_url}")
+                    logger.info(f"数据插入es索引{knowledge_id}成功:{file_url}")
 
-                    insert_knowledgebase(str(current_user.id), session_id, file_url)
+                    insert_knowledgebase_file(
+                        current_user.id,
+                        knowledge_id,
+                        session_id,
+                        file_name,
+                        file_url,
+                    )
                     print((f"数据插入knowledgebase成功: {file_name}"))
                     logger.info(f"数据插入knowledgebase成功: {file_name}")
 
